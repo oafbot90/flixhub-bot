@@ -9,8 +9,46 @@ const WEBHOOK_URL    = process.env.WEBHOOK_URL;
 const SITE_URL       = 'https://flixhub.space';
 const DOWNLOAD_URL   = 'https://flixhub.space/download';
 const IMG_BASE       = 'https://image.tmdb.org/t/p/w500';
+const TMDB_TOKEN     = process.env.TMDB_TOKEN || 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJiNjYzNDYyMGIxZDc0NjRlOGRlNDJjMDY0OGZlZjYwYyIsIm5iZiI6MTc4MTAzODk5Ni4zNTMsInN1YiI6IjZhMjg3Zjk0ZWNjNDdkNThiZTdjMjcwNCIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.icV6N_BaqsDfWIxZtjUmjvbkHVyXXmku78WSdUVsvhU';
+const TMDB_BASE      = 'https://api.themoviedb.org/3';
+const TMDB_LANG      = 'pt-BR';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ─── TMDB API ─────────────────────────────────────────────────────────────────
+async function tmdbFetch(path) {
+  try {
+    const res = await fetch(`${TMDB_BASE}${path}&language=${TMDB_LANG}`, {
+      headers: { Authorization: `Bearer ${TMDB_TOKEN}` },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function getTmdbDetails(tmdbId, type) {
+  if (!tmdbId) return null;
+  const endpoint = type === 'movie' ? `/movie/${tmdbId}?` : `/tv/${tmdbId}?`;
+  return tmdbFetch(endpoint);
+}
+
+// Enriquece item com descrição em pt-BR do TMDB
+async function enrichWithTmdb(item, type) {
+  if (!item.tmdb_id) return item;
+  const tmdb = await getTmdbDetails(item.tmdb_id, type);
+  if (!tmdb) return item;
+  return {
+    ...item,
+    overview:      tmdb.overview      || item.overview,
+    poster_path:   tmdb.poster_path   || item.poster_path,
+    backdrop_path: tmdb.backdrop_path || item.backdrop_path,
+    vote_average:  tmdb.vote_average  || item.vote_average,
+    genres:        tmdb.genres?.map(g => g.name) || item.genres,
+    number_of_seasons: tmdb.number_of_seasons || item.number_of_seasons,
+  };
+}
 
 // ─── Sessão de paginação por usuário ─────────────────────────────────────────
 const sessions = new Map();
@@ -67,19 +105,18 @@ function genreList(genres) {
 }
 
 function formatItem(item, index, type) {
-  const isMovie  = type === 'movie';
-  const title    = item.title || item.name || 'Sem título';
-  const poster   = item.poster_path ? `${IMG_BASE}${item.poster_path}` : null;
-  const year     = (isMovie ? item.release_date : item.first_air_date || item.release_date || '');
-  const yearStr  = year ? year.substring(0, 4) : '—';
-  const rating   = stars(item.vote_average);
-  const genres   = genreList(item.genres);
-  const desc     = item.overview ? item.overview.substring(0, 200) + '...' : 'Sem descrição disponível.';
-  const seasons  = !isMovie && item.number_of_seasons ? `  |  📺 ${item.number_of_seasons} temp.` : '';
-  const emoji    = isMovie ? '🎬' : '📺';
+  const isMovie   = type === 'movie';
+  const title     = item.title || item.name || 'Sem título';
+  const poster    = item.poster_path ? `${IMG_BASE}${item.poster_path}` : null;
+  const year      = isMovie ? item.release_date : (item.first_air_date || item.release_date || '');
+  const yearStr   = year ? year.substring(0, 4) : '—';
+  const rating    = stars(item.vote_average);
+  const genres    = genreList(item.genres);
+  const desc      = item.overview ? item.overview.substring(0, 220) + '...' : 'Sem descrição disponível.';
+  const seasons   = !isMovie && item.number_of_seasons ? `  |  📺 ${item.number_of_seasons} temp.` : '';
+  const emoji     = isMovie ? '🎬' : '📺';
   const typeLabel = isMovie ? 'filme' : 'série';
-
-  const prefix = index ? `*${index}. ${title}*` : `${emoji} *${title}*`;
+  const prefix    = index ? `*${index}. ${title}*` : `${emoji} *${title}*`;
 
   const text = [
     prefix,
@@ -92,6 +129,12 @@ function formatItem(item, index, type) {
   ].join('\n');
 
   return { text, poster, title, typeLabel };
+}
+
+// Enriquece com TMDB e formata
+async function enrichAndFormat(item, index, type) {
+  const enriched = await enrichWithTmdb(item, type);
+  return formatItem(enriched, index, type);
 }
 
 // ─── Teclados ─────────────────────────────────────────────────────────────────
@@ -283,7 +326,7 @@ async function handleSearch(chatId, query, type = 'all', page = 0) {
 
   for (const item of results.slice(0, 5)) {
     const idx = results.indexOf(item) + 1 + page * 5;
-    const { text, poster } = formatItem(item, idx, item._type);
+    const { text, poster } = await enrichAndFormat(item, idx, item._type);
     if (poster) {
       await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
     } else {
@@ -327,7 +370,7 @@ async function handleList(chatId, table, order, label, emoji, page = 0) {
   if (page === 0) await sendMessage(chatId, `${emoji} *${label}*`);
 
   for (let i = 0; i < data.length; i++) {
-    const { text, poster } = formatItem(data[i], from + i + 1, type);
+    const { text, poster } = await enrichAndFormat(data[i], from + i + 1, type);
     if (poster) {
       await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
     } else {
@@ -409,7 +452,7 @@ async function handleRandom(chatId) {
     return sendMessage(chatId, '❌ Erro ao buscar sugestão. Tente novamente.');
   }
 
-  const { text, poster } = formatItem(data[0], null, type);
+  const { text, poster } = await enrichAndFormat(data[0], null, type);
   const keyboard = {
     inline_keyboard: [
       [{ text: '🎲 Outra sugestão!', callback_data: 'random' }],
@@ -455,7 +498,7 @@ async function handleGenre(chatId, genre, page = 0) {
   if (page === 0) await sendMessage(chatId, `🎭 *Melhores de ${genre}*`);
 
   for (let i = 0; i < all.length; i++) {
-    const { text, poster } = formatItem(all[i], from + i + 1, all[i]._type);
+    const { text, poster } = await enrichAndFormat(all[i], from + i + 1, all[i]._type);
     if (poster) {
       await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
     } else {
