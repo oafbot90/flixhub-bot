@@ -1,17 +1,26 @@
 const { createClient } = require('@supabase/supabase-js');
+const http = require('http');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const TELEGRAM_TOKEN  = process.env.TELEGRAM_TOKEN;
-const SUPABASE_URL    = process.env.SUPABASE_URL    || 'https://jzgpwkehhgpvdlqlkfiq.supabase.co';
-const SUPABASE_KEY    = process.env.SUPABASE_KEY    || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6Z3B3a2VoaGdwdmRscWxrZmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQxNjU4NzcsImV4cCI6MjA1OTc0MTg3N30.wv1jD5rBaDrOkghJCjTxaGa2TCPtbsj4j37Ax7czPFY';
-const WEBHOOK_URL     = process.env.WEBHOOK_URL;     // ex: https://seu-projeto.vercel.app/api/bot
-const SITE_URL        = 'https://flixhub.space';
-const DOWNLOAD_URL    = 'https://flixhub.space/download';
-const IMG_BASE        = 'https://image.tmdb.org/t/p/w500';
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const SUPABASE_URL   = process.env.SUPABASE_URL  || 'https://jzgpwkehhgpvdlqlkfiq.supabase.co';
+const SUPABASE_KEY   = process.env.SUPABASE_KEY  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6Z3B3a2VoaGdwdmRscWxrZmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQxNjU4NzcsImV4cCI6MjA1OTc0MTg3N30.wv1jD5rBaDrOkghJCjTxaGa2TCPtbsj4j37Ax7czPFY';
+const WEBHOOK_URL    = process.env.WEBHOOK_URL;
+const SITE_URL       = 'https://flixhub.space';
+const DOWNLOAD_URL   = 'https://flixhub.space/download';
+const IMG_BASE       = 'https://image.tmdb.org/t/p/w500';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ─── Telegram API helper ──────────────────────────────────────────────────────
+// ─── Sessão de paginação por usuário ─────────────────────────────────────────
+const sessions = new Map();
+
+function getSession(chatId) {
+  if (!sessions.has(chatId)) sessions.set(chatId, {});
+  return sessions.get(chatId);
+}
+
+// ─── Telegram API ─────────────────────────────────────────────────────────────
 async function telegram(method, body) {
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/${method}`, {
     method:  'POST',
@@ -22,18 +31,21 @@ async function telegram(method, body) {
 }
 
 async function sendMessage(chatId, text, extra = {}) {
-  return telegram('sendMessage', { chat_id: chatId, text, parse_mode: 'Markdown', ...extra });
+  return telegram('sendMessage', { chat_id: chatId, text, parse_mode: 'Markdown', disable_web_page_preview: true, ...extra });
 }
 
 async function sendPhoto(chatId, photo, caption, extra = {}) {
   return telegram('sendPhoto', { chat_id: chatId, photo, caption, parse_mode: 'Markdown', ...extra });
 }
 
+async function editMessage(chatId, messageId, text, extra = {}) {
+  return telegram('editMessageText', { chat_id: chatId, message_id: messageId, text, parse_mode: 'Markdown', disable_web_page_preview: true, ...extra });
+}
+
 async function answerCallbackQuery(id, text) {
   return telegram('answerCallbackQuery', { callback_query_id: id, text });
 }
 
-// ─── Registrar webhook ────────────────────────────────────────────────────────
 async function setWebhook() {
   if (!WEBHOOK_URL) return;
   const r = await telegram('setWebhook', { url: WEBHOOK_URL });
@@ -54,64 +66,59 @@ function genreList(genres) {
   return genres.slice(0, 3).join(' · ');
 }
 
-function formatMovie(m, index) {
-  const poster = m.poster_path ? `${IMG_BASE}${m.poster_path}` : null;
-  const year   = m.release_date ? m.release_date.substring(0, 4) : '—';
-  const rating = stars(m.vote_average);
-  const genres = genreList(m.genres);
-  const desc   = m.overview ? m.overview.substring(0, 180) + '...' : 'Sem descrição.';
+function formatItem(item, index, type) {
+  const isMovie  = type === 'movie';
+  const title    = item.title || item.name || 'Sem título';
+  const poster   = item.poster_path ? `${IMG_BASE}${item.poster_path}` : null;
+  const year     = (isMovie ? item.release_date : item.first_air_date || item.release_date || '');
+  const yearStr  = year ? year.substring(0, 4) : '—';
+  const rating   = stars(item.vote_average);
+  const genres   = genreList(item.genres);
+  const desc     = item.overview ? item.overview.substring(0, 200) + '...' : 'Sem descrição disponível.';
+  const seasons  = !isMovie && item.number_of_seasons ? `  |  📺 ${item.number_of_seasons} temp.` : '';
+  const emoji    = isMovie ? '🎬' : '📺';
+  const typeLabel = isMovie ? 'filme' : 'série';
+
+  const prefix = index ? `*${index}. ${title}*` : `${emoji} *${title}*`;
 
   const text = [
-    index ? `*${index}. ${m.title}*` : `🎬 *${m.title}*`,
-    `${rating}  |  📅 ${year}${genres ? `  |  🎭 ${genres}` : ''}`,
+    prefix,
+    `${rating}  |  📅 ${yearStr}${genres ? `  |  🎭 ${genres}` : ''}${seasons}`,
     ``,
     desc,
     ``,
-    `▶️ [Assistir agora](${SITE_URL})`,
+    `▶️ [Assistir no FliixHub](${SITE_URL})`,
     `📲 [Baixar o app](${DOWNLOAD_URL})`,
   ].join('\n');
 
-  return { text, poster };
+  return { text, poster, title, typeLabel };
 }
 
-function formatSeries(s, index) {
-  const poster  = s.poster_path ? `${IMG_BASE}${s.poster_path}` : null;
-  const year    = s.first_air_date ? s.first_air_date.substring(0, 4) : '—';
-  const rating  = stars(s.vote_average);
-  const genres  = genreList(s.genres);
-  const seasons = s.number_of_seasons ? `📺 ${s.number_of_seasons} temporada(s)` : '';
-  const desc    = s.overview ? s.overview.substring(0, 180) + '...' : 'Sem descrição.';
-
-  const text = [
-    index ? `*${index}. ${s.title || s.name}*` : `📺 *${s.title || s.name}*`,
-    `${rating}  |  📅 ${year}${genres ? `  |  🎭 ${genres}` : ''}${seasons ? `  |  ${seasons}` : ''}`,
-    ``,
-    desc,
-    ``,
-    `▶️ [Assistir agora](${SITE_URL})`,
-    `📲 [Baixar o app](${DOWNLOAD_URL})`,
-  ].join('\n');
-
-  return { text, poster };
-}
-
-// ─── Teclado principal ────────────────────────────────────────────────────────
+// ─── Teclados ─────────────────────────────────────────────────────────────────
 const MAIN_KEYBOARD = {
   inline_keyboard: [
     [
-      { text: '🎬 Filmes populares',  callback_data: 'popular_movies'  },
-      { text: '📺 Séries populares',  callback_data: 'popular_series'  },
+      { text: '🔍 Buscar conteúdo',    callback_data: 'ask_search'      },
     ],
     [
-      { text: '🆕 Novidades filmes',  callback_data: 'new_movies'      },
-      { text: '🆕 Novidades séries',  callback_data: 'new_series'      },
+      { text: '🎬 Filmes populares',   callback_data: 'popular_movies'  },
+      { text: '📺 Séries populares',   callback_data: 'popular_series'  },
     ],
     [
-      { text: '🎭 Buscar por gênero', callback_data: 'genres_menu'     },
+      { text: '🆕 Novos filmes',       callback_data: 'new_movies'      },
+      { text: '🆕 Novas séries',       callback_data: 'new_series'      },
     ],
     [
-      { text: '▶️ Acessar FliixHub',  url: SITE_URL                    },
-      { text: '📲 Baixar o app',      url: DOWNLOAD_URL                },
+      { text: '🏆 Top 10 filmes',      callback_data: 'top10_movies'    },
+      { text: '🏆 Top 10 séries',      callback_data: 'top10_series'    },
+    ],
+    [
+      { text: '🎲 Surpreenda-me!',     callback_data: 'random'          },
+      { text: '🎭 Por gênero',         callback_data: 'genres_menu'     },
+    ],
+    [
+      { text: '▶️ Acessar FliixHub',   url: SITE_URL                    },
+      { text: '📲 Baixar o app',       url: DOWNLOAD_URL                },
     ],
   ],
 };
@@ -119,25 +126,44 @@ const MAIN_KEYBOARD = {
 const GENRE_KEYBOARD = {
   inline_keyboard: [
     [
-      { text: '💥 Ação',        callback_data: 'genre_Ação'        },
-      { text: '😂 Comédia',     callback_data: 'genre_Comédia'     },
-      { text: '😱 Terror',      callback_data: 'genre_Terror'      },
+      { text: '💥 Ação',          callback_data: 'genre_Action'              },
+      { text: '😂 Comédia',       callback_data: 'genre_Comedy'              },
+      { text: '😱 Terror',        callback_data: 'genre_Horror'              },
     ],
     [
-      { text: '💕 Romance',     callback_data: 'genre_Romance'     },
-      { text: '🚀 Ficção',      callback_data: 'genre_Ficção Científica' },
-      { text: '🕵️ Suspense',    callback_data: 'genre_Suspense'    },
+      { text: '💕 Romance',       callback_data: 'genre_Romance'             },
+      { text: '🚀 Ficção',        callback_data: 'genre_Science Fiction'     },
+      { text: '🕵️ Thriller',      callback_data: 'genre_Thriller'            },
     ],
     [
-      { text: '🎭 Drama',       callback_data: 'genre_Drama'       },
-      { text: '🌀 Animação',    callback_data: 'genre_Animation'   },
-      { text: '👨‍👩‍👧 Família',     callback_data: 'genre_Family'      },
+      { text: '🎭 Drama',         callback_data: 'genre_Drama'               },
+      { text: '🌀 Animação',      callback_data: 'genre_Animation'           },
+      { text: '👨‍👩‍👧 Família',       callback_data: 'genre_Family'              },
     ],
     [
-      { text: '⬅️ Voltar',      callback_data: 'menu'              },
+      { text: '🔫 Crime',         callback_data: 'genre_Crime'               },
+      { text: '🧩 Mistério',      callback_data: 'genre_Mystery'             },
+      { text: '📜 História',      callback_data: 'genre_History'             },
+    ],
+    [
+      { text: '🎵 Musical',       callback_data: 'genre_Music'               },
+      { text: '⚔️ Aventura',      callback_data: 'genre_Adventure'           },
+      { text: '🧙 Fantasia',      callback_data: 'genre_Fantasy'             },
+    ],
+    [
+      { text: '⬅️ Voltar ao menu', callback_data: 'menu'                     },
     ],
   ],
 };
+
+function paginationKeyboard(page, total, context) {
+  const totalPages = Math.ceil(total / 5);
+  const buttons = [];
+  if (page > 0)              buttons.push({ text: '⬅️ Anterior', callback_data: `page_${context}_${page - 1}` });
+  if (page < totalPages - 1) buttons.push({ text: 'Próximos ➡️', callback_data: `page_${context}_${page + 1}` });
+  return buttons.length ? { inline_keyboard: [buttons, [{ text: '🏠 Menu', callback_data: 'menu' }]] }
+                        : { inline_keyboard: [[{ text: '🏠 Menu', callback_data: 'menu' }]] };
+}
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 async function handleStart(chatId, firstName) {
@@ -145,10 +171,13 @@ async function handleStart(chatId, firstName) {
   const text = [
     `🎬 *Bem-vindo ao FliixHub${name}!*`,
     ``,
-    `Seu streaming favorito direto no Telegram.`,
-    `Pesquise filmes, séries e muito mais.`,
+    `Seu streaming favorito agora no Telegram.`,
+    `Filmes, séries e muito mais — tudo direto aqui.`,
     ``,
-    `*O que deseja fazer?*`,
+    `💡 *Dica:* Manda o nome de qualquer filme ou série`,
+    `e eu encontro pra você na hora!`,
+    ``,
+    `*O que deseja fazer?* 👇`,
   ].join('\n');
 
   await sendMessage(chatId, text, { reply_markup: MAIN_KEYBOARD });
@@ -156,34 +185,68 @@ async function handleStart(chatId, firstName) {
 
 async function handleHelp(chatId) {
   const text = [
-    `📖 *Como usar o bot FliixHub*`,
+    `📖 *Comandos disponíveis*`,
     ``,
-    `🔍 *Buscar conteúdo:*`,
-    `\`/buscar Breaking Bad\``,
-    `\`/filme Inception\``,
-    `\`/serie Game of Thrones\``,
+    `🔍 *Busca:*`,
+    `/buscar Breaking Bad`,
+    `/filme Inception`,
+    `/serie Friends`,
+    `_ou manda o nome direto sem comando_`,
     ``,
-    `📋 *Ver listas:*`,
-    `\`/novidades\` — últimos adicionados`,
-    `\`/populares\` — mais assistidos`,
-    `\`/genero ação\` — por gênero`,
+    `📋 *Listas:*`,
+    `/populares — filmes e séries mais vistos`,
+    `/novidades — últimos adicionados`,
+    `/top10 — ranking dos melhores`,
+    `/aleatorio — sugestão surpresa`,
+    `/genero ação — filtra por gênero`,
     ``,
-    `📲 *Links:*`,
-    `\`/site\` — acessar FliixHub`,
-    `\`/download\` — baixar o app`,
-    ``,
-    `Ou use os botões abaixo 👇`,
+    `ℹ️ *Outros:*`,
+    `/sobre — sobre o FliixHub`,
+    `/site — acessar o site`,
+    `/download — baixar o app`,
+    `/menu — voltar ao início`,
   ].join('\n');
 
   await sendMessage(chatId, text, { reply_markup: MAIN_KEYBOARD });
 }
 
-async function handleSearch(chatId, query, type = 'all') {
+async function handleSobre(chatId) {
+  const text = [
+    `🎬 *FliixHub — Seu streaming completo*`,
+    ``,
+    `Filmes, séries e TV ao vivo num só lugar.`,
+    `Disponível no celular e na web.`,
+    ``,
+    `✅ Catálogo atualizado diariamente`,
+    `✅ Múltiplos perfis por conta`,
+    `✅ Modo kids`,
+    `✅ TV ao vivo`,
+    `✅ Favoritos e histórico`,
+    ``,
+    `🌐 Site: ${SITE_URL}`,
+    `📲 App: ${DOWNLOAD_URL}`,
+  ].join('\n');
+
+  await sendMessage(chatId, text, { reply_markup: MAIN_KEYBOARD });
+}
+
+async function handleAskSearch(chatId) {
+  const session = getSession(chatId);
+  session.waitingSearch = true;
+  await sendMessage(chatId, '🔍 *Digite o nome do filme ou série que deseja buscar:*');
+}
+
+async function handleSearch(chatId, query, type = 'all', page = 0) {
   if (!query || query.trim().length < 2) {
     return sendMessage(chatId, '❌ Digite pelo menos 2 letras para buscar.');
   }
 
-  await sendMessage(chatId, `🔍 Buscando *"${query}"*...`);
+  const session = getSession(chatId);
+  session.lastSearch = { query, type };
+
+  const LIMIT = 5;
+  const from  = page * LIMIT;
+  const to    = from + LIMIT - 1;
 
   const results = [];
 
@@ -194,8 +257,7 @@ async function handleSearch(chatId, query, type = 'all') {
       .eq('has_stream', true)
       .ilike('title', `%${query}%`)
       .order('vote_count', { ascending: false })
-      .limit(type === 'movie' ? 5 : 3);
-
+      .range(from, to);
     (movies || []).forEach(m => results.push({ ...m, _type: 'movie' }));
   }
 
@@ -206,180 +268,179 @@ async function handleSearch(chatId, query, type = 'all') {
       .eq('has_stream', true)
       .ilike('title', `%${query}%`)
       .order('vote_count', { ascending: false })
-      .limit(type === 'series' ? 5 : 3);
-
+      .range(from, to);
     (series || []).forEach(s => results.push({ ...s, _type: 'series' }));
   }
 
-  if (!results.length) {
+  if (!results.length && page === 0) {
     return sendMessage(chatId,
-      `😕 Nenhum resultado para *"${query}"*.\n\nTente outro título ou use /novidades para ver o catálogo.`,
+      `😕 Nenhum resultado para *"${query}"*.\n\nTente outro título ou explore o catálogo abaixo.`,
       { reply_markup: MAIN_KEYBOARD }
     );
   }
 
-  // Envia cada resultado com poster
-  for (let i = 0; i < Math.min(results.length, 5); i++) {
-    const item = results[i];
-    const { text, poster } = item._type === 'movie'
-      ? formatMovie(item, i + 1)
-      : formatSeries(item, i + 1);
+  if (page === 0) await sendMessage(chatId, `🔍 Resultados para *"${query}"*:`);
 
+  for (const item of results.slice(0, 5)) {
+    const idx = results.indexOf(item) + 1 + page * 5;
+    const { text, poster } = formatItem(item, idx, item._type);
     if (poster) {
       await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
     } else {
       await sendMessage(chatId, text);
     }
-
-    // Pequeno delay pra não travar
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 250));
   }
 
-  await sendMessage(chatId, `✅ *${results.length} resultado(s) encontrado(s)*\n\nUse os botões abaixo para explorar mais 👇`, {
-    reply_markup: MAIN_KEYBOARD,
-  });
+  const hasMore = results.length >= 5;
+  const keyboard = {
+    inline_keyboard: [
+      ...(hasMore ? [[{ text: 'Ver mais resultados ➡️', callback_data: `search_more_${page + 1}` }]] : []),
+      [{ text: '🏠 Menu principal', callback_data: 'menu' }],
+    ],
+  };
+
+  await sendMessage(chatId, hasMore
+    ? `📄 Página ${page + 1} — deseja ver mais?`
+    : `✅ *Fim dos resultados para "${query}"*`,
+    { reply_markup: keyboard }
+  );
 }
 
-async function handlePopularMovies(chatId) {
-  await sendMessage(chatId, '🎬 Carregando filmes populares...');
+async function handleList(chatId, table, order, label, emoji, page = 0) {
+  const LIMIT = 5;
+  const from  = page * LIMIT;
+  const type  = table === 'movies_catalog' ? 'movie' : 'series';
 
   const { data, error } = await supabase
-    .from('movies_catalog')
+    .from(table)
     .select('*')
     .eq('has_stream', true)
     .not('poster_path', 'is', null)
-    .order('vote_count', { ascending: false })
-    .limit(5);
+    .order(order, { ascending: false })
+    .range(from, from + LIMIT - 1);
 
   if (error || !data?.length) {
-    return sendMessage(chatId, '❌ Erro ao carregar filmes. Tente novamente.');
+    return sendMessage(chatId, `❌ Erro ao carregar. Tente novamente.`);
   }
 
+  if (page === 0) await sendMessage(chatId, `${emoji} *${label}*`);
+
   for (let i = 0; i < data.length; i++) {
-    const { text, poster } = formatMovie(data[i], i + 1);
+    const { text, poster } = formatItem(data[i], from + i + 1, type);
     if (poster) {
       await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
     } else {
       await sendMessage(chatId, text);
     }
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 250));
   }
 
-  await sendMessage(chatId, `🔥 *Top 5 Filmes mais populares*\n\n▶️ Veja todos em ${SITE_URL}`, {
-    reply_markup: MAIN_KEYBOARD,
-  });
+  const context  = `${table}|${order}|${label}|${emoji}`;
+  const ctxKey   = Buffer.from(context).toString('base64').substring(0, 40);
+  const session  = getSession(chatId);
+  session[ctxKey] = context;
+
+  const hasMore = data.length === LIMIT;
+  const keyboard = {
+    inline_keyboard: [
+      ...(hasMore ? [[{ text: 'Ver mais ➡️', callback_data: `list_${ctxKey}_${page + 1}` }]] : []),
+      [{ text: '🏠 Menu principal', callback_data: 'menu' }],
+    ],
+  };
+
+  await sendMessage(chatId, `📄 Página ${page + 1}`, { reply_markup: keyboard });
 }
 
-async function handlePopularSeries(chatId) {
-  await sendMessage(chatId, '📺 Carregando séries populares...');
+async function handleTop10(chatId, type) {
+  const table  = type === 'movie' ? 'movies_catalog' : 'series_catalog';
+  const emoji  = type === 'movie' ? '🎬' : '📺';
+  const label  = type === 'movie' ? 'Top 10 Filmes' : 'Top 10 Séries';
+
+  await sendMessage(chatId, `🏆 *${label}*`);
 
   const { data, error } = await supabase
-    .from('series_catalog')
+    .from(table)
     .select('*')
     .eq('has_stream', true)
     .not('poster_path', 'is', null)
-    .order('vote_count', { ascending: false })
-    .limit(5);
+    .order('vote_average', { ascending: false })
+    .limit(10);
 
   if (error || !data?.length) {
-    return sendMessage(chatId, '❌ Erro ao carregar séries. Tente novamente.');
+    return sendMessage(chatId, '❌ Erro ao carregar. Tente novamente.');
   }
 
   for (let i = 0; i < data.length; i++) {
-    const { text, poster } = formatSeries(data[i], i + 1);
-    if (poster) {
-      await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
-    } else {
-      await sendMessage(chatId, text);
-    }
-    await new Promise(r => setTimeout(r, 300));
+    const medals = ['🥇','🥈','🥉'];
+    const prefix = i < 3 ? medals[i] : `*${i + 1}.*`;
+    const item   = data[i];
+    const year   = (type === 'movie' ? item.release_date : item.first_air_date || '');
+    const yearStr = year ? year.substring(0, 4) : '—';
+
+    const line = `${prefix} ${item.title || item.name}  ${stars(item.vote_average)}  📅 ${yearStr}`;
+    await sendMessage(chatId, line);
+    await new Promise(r => setTimeout(r, 150));
   }
 
-  await sendMessage(chatId, `🔥 *Top 5 Séries mais populares*\n\n▶️ Veja todas em ${SITE_URL}`, {
-    reply_markup: MAIN_KEYBOARD,
-  });
+  await sendMessage(chatId, `▶️ Assista agora em ${SITE_URL}`, { reply_markup: MAIN_KEYBOARD });
 }
 
-async function handleNewMovies(chatId) {
-  await sendMessage(chatId, '🆕 Carregando novidades...');
+async function handleRandom(chatId) {
+  await sendMessage(chatId, '🎲 Escolhendo uma surpresa pra você...');
+
+  const isMovie = Math.random() > 0.5;
+  const table   = isMovie ? 'movies_catalog' : 'series_catalog';
+  const type    = isMovie ? 'movie' : 'series';
+
+  // Pega um offset aleatório
+  const { count } = await supabase.from(table).select('*', { count: 'exact', head: true }).eq('has_stream', true);
+  const offset = Math.floor(Math.random() * Math.min(count || 100, 200));
 
   const { data, error } = await supabase
-    .from('movies_catalog')
+    .from(table)
     .select('*')
     .eq('has_stream', true)
     .not('poster_path', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(5);
+    .range(offset, offset)
+    .limit(1);
 
   if (error || !data?.length) {
-    return sendMessage(chatId, '❌ Erro ao carregar novidades. Tente novamente.');
+    return sendMessage(chatId, '❌ Erro ao buscar sugestão. Tente novamente.');
   }
 
-  for (let i = 0; i < data.length; i++) {
-    const { text, poster } = formatMovie(data[i], i + 1);
-    if (poster) {
-      await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
-    } else {
-      await sendMessage(chatId, text);
-    }
-    await new Promise(r => setTimeout(r, 300));
-  }
+  const { text, poster } = formatItem(data[0], null, type);
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '🎲 Outra sugestão!', callback_data: 'random' }],
+      [{ text: '🏠 Menu', callback_data: 'menu' }],
+    ],
+  };
 
-  await sendMessage(chatId, `✨ *Últimos filmes adicionados*\n\n▶️ Veja todos em ${SITE_URL}`, {
-    reply_markup: MAIN_KEYBOARD,
-  });
+  if (poster) {
+    await sendPhoto(chatId, poster, text, { reply_markup: keyboard }).catch(() =>
+      sendMessage(chatId, text, { reply_markup: keyboard })
+    );
+  } else {
+    await sendMessage(chatId, text, { reply_markup: keyboard });
+  }
 }
 
-async function handleNewSeries(chatId) {
-  await sendMessage(chatId, '🆕 Carregando novidades...');
-
-  const { data, error } = await supabase
-    .from('series_catalog')
-    .select('*')
-    .eq('has_stream', true)
-    .not('poster_path', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(5);
-
-  if (error || !data?.length) {
-    return sendMessage(chatId, '❌ Erro ao carregar novidades. Tente novamente.');
-  }
-
-  for (let i = 0; i < data.length; i++) {
-    const { text, poster } = formatSeries(data[i], i + 1);
-    if (poster) {
-      await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
-    } else {
-      await sendMessage(chatId, text);
-    }
-    await new Promise(r => setTimeout(r, 300));
-  }
-
-  await sendMessage(chatId, `✨ *Últimas séries adicionadas*\n\n▶️ Veja todas em ${SITE_URL}`, {
-    reply_markup: MAIN_KEYBOARD,
-  });
-}
-
-async function handleGenre(chatId, genre) {
-  await sendMessage(chatId, `🎭 Buscando conteúdo de *${genre}*...`);
+async function handleGenre(chatId, genre, page = 0) {
+  const LIMIT = 4;
+  const from  = page * LIMIT;
 
   const [{ data: movies }, { data: series }] = await Promise.all([
-    supabase
-      .from('movies_catalog')
-      .select('*')
-      .eq('has_stream', true)
-      .contains('genres', [genre])
+    supabase.from('movies_catalog').select('*').eq('has_stream', true)
+      .or(`genres.cs.{"${genre}"}`)
       .not('poster_path', 'is', null)
       .order('vote_count', { ascending: false })
-      .limit(3),
-    supabase
-      .from('series_catalog')
-      .select('*')
-      .eq('has_stream', true)
-      .contains('genres', [genre])
+      .range(from, from + 1),
+    supabase.from('series_catalog').select('*').eq('has_stream', true)
+      .or(`genres.cs.{"${genre}"}`)
       .not('poster_path', 'is', null)
       .order('vote_count', { ascending: false })
-      .limit(3),
+      .range(from, from + 1),
   ]);
 
   const all = [
@@ -387,147 +448,164 @@ async function handleGenre(chatId, genre) {
     ...(series || []).map(s => ({ ...s, _type: 'series' })),
   ];
 
-  if (!all.length) {
-    return sendMessage(chatId, `😕 Nenhum conteúdo encontrado para o gênero *${genre}*.`, {
-      reply_markup: GENRE_KEYBOARD,
-    });
+  if (!all.length && page === 0) {
+    return sendMessage(chatId, `😕 Nenhum conteúdo encontrado para *${genre}*.`, { reply_markup: GENRE_KEYBOARD });
   }
 
-  for (let i = 0; i < all.length; i++) {
-    const item = all[i];
-    const { text, poster } = item._type === 'movie'
-      ? formatMovie(item, i + 1)
-      : formatSeries(item, i + 1);
+  if (page === 0) await sendMessage(chatId, `🎭 *Melhores de ${genre}*`);
 
+  for (let i = 0; i < all.length; i++) {
+    const { text, poster } = formatItem(all[i], from + i + 1, all[i]._type);
     if (poster) {
       await sendPhoto(chatId, poster, text).catch(() => sendMessage(chatId, text));
     } else {
       await sendMessage(chatId, text);
     }
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 250));
   }
 
-  await sendMessage(chatId, `🎭 *Melhores de ${genre}*\n\n▶️ Veja mais em ${SITE_URL}`, {
-    reply_markup: MAIN_KEYBOARD,
-  });
+  const session = getSession(chatId);
+  session.lastGenre = genre;
+
+  const hasMore = all.length >= 4;
+  const keyboard = {
+    inline_keyboard: [
+      ...(hasMore ? [[{ text: 'Ver mais ➡️', callback_data: `genre_more_${page + 1}` }]] : []),
+      [{ text: '🎭 Outros gêneros', callback_data: 'genres_menu' }],
+      [{ text: '🏠 Menu', callback_data: 'menu' }],
+    ],
+  };
+
+  await sendMessage(chatId, `📄 Página ${page + 1}`, { reply_markup: keyboard });
 }
 
 // ─── Processador principal ────────────────────────────────────────────────────
 async function processUpdate(update) {
-  // Callback de botão
   if (update.callback_query) {
     const cb     = update.callback_query;
     const chatId = cb.message.chat.id;
     const data   = cb.data;
+    const session = getSession(chatId);
 
     await answerCallbackQuery(cb.id);
 
     if (data === 'menu')            return handleStart(chatId);
-    if (data === 'popular_movies')  return handlePopularMovies(chatId);
-    if (data === 'popular_series')  return handlePopularSeries(chatId);
-    if (data === 'new_movies')      return handleNewMovies(chatId);
-    if (data === 'new_series')      return handleNewSeries(chatId);
+    if (data === 'ask_search')      return handleAskSearch(chatId);
+    if (data === 'random')          return handleRandom(chatId);
     if (data === 'genres_menu')     return sendMessage(chatId, '🎭 *Escolha um gênero:*', { reply_markup: GENRE_KEYBOARD });
-    if (data.startsWith('genre_'))  return handleGenre(chatId, data.replace('genre_', ''));
+    if (data === 'popular_movies')  return handleList(chatId, 'movies_catalog', 'vote_count', 'Filmes Populares', '🔥');
+    if (data === 'popular_series')  return handleList(chatId, 'series_catalog', 'vote_count', 'Séries Populares', '🔥');
+    if (data === 'new_movies')      return handleList(chatId, 'movies_catalog', 'created_at', 'Novos Filmes', '🆕');
+    if (data === 'new_series')      return handleList(chatId, 'series_catalog', 'created_at', 'Novas Séries', '🆕');
+    if (data === 'top10_movies')    return handleTop10(chatId, 'movie');
+    if (data === 'top10_series')    return handleTop10(chatId, 'series');
+
+    if (data.startsWith('genre_more_')) {
+      const page = parseInt(data.replace('genre_more_', '')) || 0;
+      return handleGenre(chatId, session.lastGenre || 'Action', page);
+    }
+
+    if (data.startsWith('genre_')) {
+      const genre = data.replace('genre_', '');
+      return handleGenre(chatId, genre, 0);
+    }
+
+    if (data.startsWith('search_more_')) {
+      const page = parseInt(data.replace('search_more_', '')) || 0;
+      if (session.lastSearch) {
+        return handleSearch(chatId, session.lastSearch.query, session.lastSearch.type, page);
+      }
+    }
+
+    if (data.startsWith('list_')) {
+      const parts  = data.split('_');
+      const page   = parseInt(parts[parts.length - 1]) || 0;
+      const ctxKey = parts.slice(1, parts.length - 1).join('_');
+      const ctx    = session[ctxKey];
+      if (ctx) {
+        const [table, order, label, emoji] = ctx.split('|');
+        return handleList(chatId, table, order, label, emoji, page);
+      }
+    }
+
     return;
   }
 
-  // Mensagem de texto
   if (!update.message?.text) return;
 
-  const msg      = update.message;
-  const chatId   = msg.chat.id;
-  const text     = msg.text.trim();
+  const msg       = update.message;
+  const chatId    = msg.chat.id;
+  const text      = msg.text.trim();
   const firstName = msg.from?.first_name;
+  const session   = getSession(chatId);
+
+  // Aguardando busca via botão
+  if (session.waitingSearch && !text.startsWith('/')) {
+    session.waitingSearch = false;
+    return handleSearch(chatId, text, 'all', 0);
+  }
 
   // Comandos
-  if (text.startsWith('/start'))    return handleStart(chatId, firstName);
+  if (text.startsWith('/start'))     return handleStart(chatId, firstName);
   if (text.startsWith('/help') || text === '/ajuda') return handleHelp(chatId);
-  if (text.startsWith('/menu'))     return handleStart(chatId, firstName);
+  if (text.startsWith('/menu'))      return handleStart(chatId, firstName);
+  if (text.startsWith('/sobre'))     return handleSobre(chatId);
+  if (text.startsWith('/site'))      return sendMessage(chatId, `🌐 Acesse o FliixHub:\n${SITE_URL}`, { reply_markup: MAIN_KEYBOARD });
+  if (text.startsWith('/download'))  return sendMessage(chatId, `📲 Baixe o app FliixHub:\n${DOWNLOAD_URL}`, { reply_markup: MAIN_KEYBOARD });
 
-  if (text.startsWith('/site'))     return sendMessage(chatId, `🌐 Acesse o FliixHub:\n${SITE_URL}`);
-  if (text.startsWith('/download')) return sendMessage(chatId, `📲 Baixe o app FliixHub:\n${DOWNLOAD_URL}`);
+  if (text.startsWith('/aleatorio') || text.startsWith('/random')) return handleRandom(chatId);
 
   if (text.startsWith('/populares') || text.startsWith('/popular')) {
-    await handlePopularMovies(chatId);
-    return handlePopularSeries(chatId);
+    await handleList(chatId, 'movies_catalog', 'vote_count', 'Filmes Populares', '🔥');
+    return handleList(chatId, 'series_catalog', 'vote_count', 'Séries Populares', '🔥');
   }
 
   if (text.startsWith('/novidades') || text.startsWith('/novo')) {
-    await handleNewMovies(chatId);
-    return handleNewSeries(chatId);
+    await handleList(chatId, 'movies_catalog', 'created_at', 'Novos Filmes', '🆕');
+    return handleList(chatId, 'series_catalog', 'created_at', 'Novas Séries', '🆕');
   }
 
-  if (text.startsWith('/buscar ') || text.startsWith('/search ')) {
-    const query = text.split(' ').slice(1).join(' ');
-    return handleSearch(chatId, query, 'all');
+  if (text.startsWith('/top10')) {
+    await handleTop10(chatId, 'movie');
+    return handleTop10(chatId, 'series');
   }
 
-  if (text.startsWith('/filme ') || text.startsWith('/movie ')) {
-    const query = text.split(' ').slice(1).join(' ');
-    return handleSearch(chatId, query, 'movie');
-  }
+  if (text.startsWith('/buscar ')  || text.startsWith('/search '))  return handleSearch(chatId, text.split(' ').slice(1).join(' '), 'all');
+  if (text.startsWith('/filme ')   || text.startsWith('/movie '))   return handleSearch(chatId, text.split(' ').slice(1).join(' '), 'movie');
+  if (text.startsWith('/serie ')   || text.startsWith('/series '))  return handleSearch(chatId, text.split(' ').slice(1).join(' '), 'series');
+  if (text.startsWith('/genero ')  || text.startsWith('/genre '))   return handleGenre(chatId, text.split(' ').slice(1).join(' '));
 
-  if (text.startsWith('/serie ') || text.startsWith('/series ')) {
-    const query = text.split(' ').slice(1).join(' ');
-    return handleSearch(chatId, query, 'series');
-  }
+  // Texto livre = busca automática
+  if (!text.startsWith('/')) return handleSearch(chatId, text, 'all', 0);
 
-  if (text.startsWith('/genero ') || text.startsWith('/genre ')) {
-    const genre = text.split(' ').slice(1).join(' ');
-    return handleGenre(chatId, genre);
-  }
-
-  // Texto livre — trata como busca
-  if (!text.startsWith('/')) {
-    return handleSearch(chatId, text, 'all');
-  }
-
-  // Comando desconhecido
-  return sendMessage(chatId,
-    `❓ Comando não reconhecido.\n\nDigite /help para ver os comandos disponíveis.`,
-    { reply_markup: MAIN_KEYBOARD }
-  );
+  return sendMessage(chatId, `❓ Comando não reconhecido. Use /help para ver os comandos.`, { reply_markup: MAIN_KEYBOARD });
 }
 
-// ─── Servidor HTTP (para webhook) ─────────────────────────────────────────────
-const http = require('http');
-
+// ─── Servidor HTTP ────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && req.url === '/webhook') {
     let body = '';
     req.on('data', chunk => (body += chunk));
     req.on('end', async () => {
-      try {
-        const update = JSON.parse(body);
-        await processUpdate(update);
-      } catch (e) {
-        console.error('[Bot] Erro ao processar update:', e.message);
-      }
-      res.writeHead(200);
-      res.end('OK');
+      try { await processUpdate(JSON.parse(body)); } catch (e) { console.error('[Bot] Erro:', e.message); }
+      res.writeHead(200); res.end('OK');
     });
   } else if (req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('FliixHub Bot está no ar! 🎬');
   } else {
-    res.writeHead(404);
-    res.end();
+    res.writeHead(404); res.end();
   }
 });
 
-// ─── Polling (alternativa sem webhook) ───────────────────────────────────────
+// ─── Polling ──────────────────────────────────────────────────────────────────
 async function polling() {
   let offset = 0;
   console.log('[Bot] Iniciado em modo polling...');
-
   while (true) {
     try {
-      const res = await fetch(
-        `https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates?offset=${offset}&timeout=30`
-      );
+      const res  = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates?offset=${offset}&timeout=30`);
       const json = await res.json();
-
       if (json.ok && json.result.length) {
         for (const update of json.result) {
           offset = update.update_id + 1;
@@ -545,12 +623,10 @@ async function polling() {
 const PORT = process.env.PORT || 3000;
 
 if (WEBHOOK_URL) {
-  // Modo webhook (Vercel, Fly.io, etc.)
   server.listen(PORT, async () => {
     console.log(`[Bot] Servidor rodando na porta ${PORT}`);
     await setWebhook();
   });
 } else {
-  // Modo polling (local / VPS simples)
   polling();
 }
