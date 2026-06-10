@@ -224,10 +224,11 @@ const GENRE_KEYBOARD = {
 
 const ADMIN_KEYBOARD = {
   inline_keyboard: [
-    [{ text: '📊 Estatísticas',        callback_data: 'admin_stats'      }],
-    [{ text: '📢 Broadcast',           callback_data: 'admin_broadcast'  }],
-    [{ text: '🆕 Postar novidade agora', callback_data: 'admin_post_now' }],
-    [{ text: '⬅️ Sair do painel',       callback_data: 'menu'            }],
+    [{ text: '📊 Estatísticas',          callback_data: 'admin_stats'      }],
+    [{ text: '📢 Broadcast',             callback_data: 'admin_broadcast'  }],
+    [{ text: '🆕 Postar novidade agora', callback_data: 'admin_post_now'   }],
+    [{ text: '🛡️ Moderação do grupo',    callback_data: 'admin_mod'        }],
+    [{ text: '⬅️ Sair do painel',        callback_data: 'menu'             }],
   ],
 };
 
@@ -803,38 +804,55 @@ async function processUpdate(update) {
 }
 
 // ─── Handler webhook Supabase (novidades instantâneas) ───────────────────────
+// Guarda IDs já postados pra não duplicar
+const postedIds = new Set();
+
 async function handleSupabaseWebhook(body) {
   try {
     const payload = JSON.parse(body);
     const { type, table, record } = payload;
 
-    if (type !== 'INSERT' || !record) return;
+    // Aceita INSERT ou UPDATE (has_stream pode ser setado depois do insert)
+    if (!['INSERT', 'UPDATE'].includes(type) || !record) return;
 
     const isMovie  = table === 'movies_catalog';
     const isSeries = table === 'series_catalog';
     if (!isMovie && !isSeries) return;
+
+    // Só posta se tiver stream disponível
     if (!record.has_stream) return;
 
-    console.log('[Supabase] Novo conteúdo recebido:', record.title || record.name);
+    // Evita postar o mesmo conteúdo duas vezes
+    const uniqueKey = table + '_' + record.id;
+    if (postedIds.has(uniqueKey)) return;
+    postedIds.add(uniqueKey);
+
+    // Limpa cache antigo (mantém só os últimos 200)
+    if (postedIds.size > 200) {
+      const first = postedIds.values().next().value;
+      postedIds.delete(first);
+    }
+
+    console.log('[Supabase] ' + type + ' recebido:', record.title || record.name);
 
     const contentType = isMovie ? 'movie' : 'series';
     const label       = isMovie ? '🆕 *NOVO FILME ADICIONADO!*' : '🆕 *NOVA SÉRIE ADICIONADA!*';
 
-    const enriched        = await enrichWithTmdb(record, contentType);
+    const enriched         = await enrichWithTmdb(record, contentType);
     const { text, poster } = formatItem(enriched, null, contentType);
-    const msg = label + '
-
-' + text;
+    const msg              = label + '\n\n' + text;
 
     if (poster) {
       await sendPhoto(GROUP_ID, poster, msg).catch(() => sendMessage(GROUP_ID, msg));
     } else {
       await sendMessage(GROUP_ID, msg);
     }
-    console.log('[Supabase] Postado no grupo!');
+
+    console.log('[Supabase] ✅ Postado no grupo instantaneamente!');
   } catch (e) {
     console.error('[Supabase Webhook] Erro:', e.message);
   }
+}
 }
 
 // ─── Servidor HTTP ────────────────────────────────────────────────────────────
