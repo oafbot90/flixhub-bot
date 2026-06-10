@@ -809,22 +809,35 @@ const postedIds = new Set();
 
 async function handleSupabaseWebhook(body) {
   try {
+    console.log('[Supabase] Payload recebido:', body.substring(0, 400));
+
     const payload = JSON.parse(body);
     const { type, table, record } = payload;
 
-    // Aceita INSERT ou UPDATE (has_stream pode ser setado depois do insert)
-    if (!['INSERT', 'UPDATE'].includes(type) || !record) return;
+    console.log('[Supabase] type:', type, '| table:', table, '| has_stream:', record && record.has_stream, '| title:', record && (record.title || record.name));
+
+    if (!['INSERT', 'UPDATE'].includes(type) || !record) {
+      console.log('[Supabase] Ignorado — type invalido ou sem record');
+      return;
+    }
 
     const isMovie  = table === 'movies_catalog';
     const isSeries = table === 'series_catalog';
-    if (!isMovie && !isSeries) return;
+    if (!isMovie && !isSeries) {
+      console.log('[Supabase] Ignorado — tabela nao reconhecida:', table);
+      return;
+    }
 
-    // Só posta se tiver stream disponível
-    if (!record.has_stream) return;
+    if (!record.has_stream) {
+      console.log('[Supabase] Ignorado — has_stream = false/null');
+      return;
+    }
 
-    // Evita postar o mesmo conteúdo duas vezes
     const uniqueKey = table + '_' + record.id;
-    if (postedIds.has(uniqueKey)) return;
+    if (postedIds.has(uniqueKey)) {
+      console.log('[Supabase] Ignorado — ja postado:', uniqueKey);
+      return;
+    }
     postedIds.add(uniqueKey);
 
     // Limpa cache antigo (mantém só os últimos 200)
