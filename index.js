@@ -853,7 +853,6 @@ async function handleSupabaseWebhook(body) {
     console.error('[Supabase Webhook] Erro:', e.message);
   }
 }
-}
 
 // ─── Servidor HTTP ────────────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
