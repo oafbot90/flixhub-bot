@@ -659,6 +659,12 @@ async function processUpdate(update) {
     return;
   }
 
+  // Moderação de mensagens do grupo
+  if (update.message?.chat?.id === GROUP_ID && update.message?.from) {
+    const blocked = await moderateMessage(update.message);
+    if (blocked) return;
+  }
+
   // Callback de botão
   if (update.callback_query) {
     const cb      = update.callback_query;
@@ -679,9 +685,34 @@ async function processUpdate(update) {
     if (data === 'new_series')      return handleList(chatId, 'series_catalog', 'created_at', 'Novas Séries', '🆕');
     if (data === 'top10_movies')    return handleTop10(chatId, 'movie');
     if (data === 'top10_series')    return handleTop10(chatId, 'series');
-    if (data === 'admin_stats')     return isAdmin(chatId) ? handleAdminStats(chatId)    : null;
-    if (data === 'admin_broadcast') return isAdmin(chatId) ? handleAdminBroadcast(chatId): null;
-    if (data === 'admin_post_now')  return isAdmin(chatId) ? handleAdminPostNow(chatId)  : null;
+    if (data === 'admin_stats')      return isAdmin(chatId) ? handleAdminStats(chatId)       : null;
+    if (data === 'admin_broadcast')  return isAdmin(chatId) ? handleAdminBroadcast(chatId)  : null;
+    if (data === 'admin_post_now')   return isAdmin(chatId) ? handleAdminPostNow(chatId)    : null;
+    if (data === 'admin_mod' || data === 'mod_panel') return isAdmin(chatId) ? handleModPanel(chatId) : null;
+    if (data === 'mod_badwords_menu')  return isAdmin(chatId) ? handleModBadwordsMenu(chatId)  : null;
+    if (data === 'mod_whitelist_menu') return isAdmin(chatId) ? handleModWhitelistMenu(chatId) : null;
+    if (data === 'mod_view_warns')     return isAdmin(chatId) ? handleModViewWarns(chatId)     : null;
+    if (data === 'mod_user_menu')      return isAdmin(chatId) ? handleModUserMenu(chatId)      : null;
+    if (data === 'mod_set_warnlimit')  return isAdmin(chatId) ? handleModSetWarnLimit(chatId)  : null;
+    if (data === 'mod_set_mute')       return isAdmin(chatId) ? handleModSetMute(chatId)       : null;
+    if (data.startsWith('mod_toggle_'))  { if (isAdmin(chatId)) return handleModToggle(chatId, data); return; }
+    if (data.startsWith('mod_action_'))  { if (isAdmin(chatId)) return executeModAction(chatId, data.replace('mod_action_', '')); return; }
+    if (data.startsWith('mod_approve_')) {
+      if (isAdmin(chatId)) {
+        const msgId = data.replace('mod_approve_', '');
+        const pending = pendingMsgs.get(parseInt(msgId));
+        if (pending) { await sendMessage(GROUP_ID, pending.text); pendingMsgs.delete(parseInt(msgId)); }
+        return sendMessage(chatId, '✅ Mensagem aprovada e enviada no grupo.');
+      }
+    }
+    if (data.startsWith('mod_reject_')) {
+      if (isAdmin(chatId)) {
+        const parts = data.replace('mod_reject_', '').split('_');
+        pendingMsgs.delete(parseInt(parts[0]));
+        return sendMessage(chatId, '❌ Mensagem rejeitada.');
+      }
+    }
+    if (data === 'admin_menu') return isAdmin(chatId) ? handleAdmin(chatId) : null;
 
     if (data.startsWith('genre_more_')) {
       const page = parseInt(data.replace('genre_more_', '')) || 0;
@@ -771,24 +802,71 @@ async function processUpdate(update) {
   return sendMessage(chatId, `❓ Comando não reconhecido. Use /help para ver os comandos.`, { reply_markup: MAIN_KEYBOARD });
 }
 
-// ─── Servidor HTTP ────────────────────────────────────────────────────────────
-const server = http.createServer(async (req, res) => {
-  if (req.method === 'POST' && req.url === '/webhook') {
-    let body = '';
-    req.on('data', chunk => (body += chunk));
-    req.on('end', async () => {
-      try { await processUpdate(JSON.parse(body)); } catch (e) { console.error('[Bot]', e.message); }
-      res.writeHead(200); res.end('OK');
-    });
-  } else if (req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('FliixHub Bot online! 🎬');
-  } else {
-    res.writeHead(404); res.end();
+// ─── Handler webhook Supabase (novidades instantâneas) ───────────────────────
+async function handleSupabaseWebhook(body) {
+  try {
+    const payload = JSON.parse(body);
+    const { type, table, record } = payload;
+
+    if (type !== 'INSERT' || !record) return;
+
+    const isMovie  = table === 'movies_catalog';
+    const isSeries = table === 'series_catalog';
+    if (!isMovie && !isSeries) return;
+    if (!record.has_stream) return;
+
+    console.log('[Supabase] Novo conteúdo recebido:', record.title || record.name);
+
+    const contentType = isMovie ? 'movie' : 'series';
+    const label       = isMovie ? '🆕 *NOVO FILME ADICIONADO!*' : '🆕 *NOVA SÉRIE ADICIONADA!*';
+
+    const enriched        = await enrichWithTmdb(record, contentType);
+    const { text, poster } = formatItem(enriched, null, contentType);
+    const msg = label + '
+
+' + text;
+
+    if (poster) {
+      await sendPhoto(GROUP_ID, poster, msg).catch(() => sendMessage(GROUP_ID, msg));
+    } else {
+      await sendMessage(GROUP_ID, msg);
+    }
+    console.log('[Supabase] Postado no grupo!');
+  } catch (e) {
+    console.error('[Supabase Webhook] Erro:', e.message);
   }
+}
+
+// ─── Servidor HTTP ────────────────────────────────────────────────────────────
+const server = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', chunk => (body += chunk));
+  req.on('end', async () => {
+    try {
+      if (req.method === 'POST' && req.url === '/webhook') {
+        await processUpdate(JSON.parse(body));
+        res.writeHead(200); res.end('OK');
+        return;
+      }
+      if (req.method === 'POST' && req.url === '/supabase-webhook') {
+        handleSupabaseWebhook(body); // sem await — responde rápido pro Supabase
+        res.writeHead(200); res.end('OK');
+        return;
+      }
+      if (req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('FliixHub Bot online! 🎬');
+        return;
+      }
+      res.writeHead(404); res.end();
+    } catch (e) {
+      console.error('[Server]', e.message);
+      res.writeHead(500); res.end();
+    }
+  });
 });
 
-// ─── Polling ──────────────────────────────────────────────────────────────────
+// ─── Polling (modo local) ─────────────────────────────────────────────────────
 async function polling() {
   let offset = 0;
   console.log('[Bot] Polling iniciado...');
@@ -809,11 +887,514 @@ async function polling() {
   }
 }
 
-// ─── Verificador de novidades (a cada 30 min) ─────────────────────────────────
-function startNewsChecker() {
-  console.log('[Novidades] Verificador iniciado — checa a cada 30 minutos');
-  postNewContent(); // roda imediatamente ao iniciar
-  setInterval(postNewContent, 30 * 60 * 1000);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODERAÇÃO AVANÇADA DO GRUPO
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Estado da moderação ──────────────────────────────────────────────────────
+const modConfig = {
+  enabled:           true,   // moderação ligada/desligada
+  antiSpam:          true,   // anti-spam ativo
+  antiLink:          true,   // bloqueia links externos
+  antiTmdb:          false,  // permite links do tmdb
+  approvalMode:      false,  // modo aprovação — mensagens precisam de ok
+  antiBadWords:      true,   // bloqueia palavrões
+  antiForward:       false,  // bloqueia mensagens encaminhadas
+  antiCaps:          true,   // bloqueia texto em CAPS LOCK excessivo
+  antiFlood:         true,   // bloqueia flood de mensagens
+  welcomeEnabled:    true,   // mensagem de boas-vindas ativa
+  warnLimit:         3,      // avisos antes do ban
+  muteDuration:      10,     // minutos de mute padrão
+  slowMode:          0,      // segundos entre mensagens (0 = desligado)
+};
+
+// Palavras proibidas (admin pode adicionar/remover)
+const badWords = new Set([
+  'palavrao1', 'palavrao2', // placeholder — admin adiciona pelo bot
+]);
+
+// Links permitidos (whitelist)
+const allowedDomains = new Set([
+  'flixhub.space',
+  't.me',
+  'youtube.com',
+  'youtu.be',
+]);
+
+// Controle de warns e mutes
+const userWarns    = new Map(); // userId → count
+const userMuted    = new Map(); // userId → timestamp de unmute
+const floodControl = new Map(); // userId → { count, lastMsg }
+const pendingMsgs  = new Map(); // messageId → { userId, text, approved }
+
+// ─── Utilitários de moderação ─────────────────────────────────────────────────
+function getWarns(userId) { return userWarns.get(userId) || 0; }
+
+function addWarn(userId) {
+  const w = getWarns(userId) + 1;
+  userWarns.set(userId, w);
+  return w;
+}
+
+function resetWarns(userId) { userWarns.delete(userId); }
+
+function isMuted(userId) {
+  const until = userMuted.get(userId);
+  if (!until) return false;
+  if (Date.now() < until) return true;
+  userMuted.delete(userId);
+  return false;
+}
+
+function muteUser(userId, minutes) {
+  userMuted.set(userId, Date.now() + minutes * 60 * 1000);
+}
+
+function isFlood(userId) {
+  if (!modConfig.antiFlood) return false;
+  const now  = Date.now();
+  const data = floodControl.get(userId) || { count: 0, lastMsg: 0 };
+
+  if (now - data.lastMsg < 3000) {
+    data.count++;
+  } else {
+    data.count = 1;
+  }
+  data.lastMsg = now;
+  floodControl.set(userId, data);
+  return data.count >= 5; // 5 msgs em 3s = flood
+}
+
+function hasExternalLink(text) {
+  if (!modConfig.antiLink) return false;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const matches  = text.match(urlRegex) || [];
+  for (const url of matches) {
+    const allowed = [...allowedDomains].some(d => url.includes(d));
+    if (!allowed) return true;
+  }
+  return false;
+}
+
+function hasBadWord(text) {
+  if (!modConfig.antiBadWords || !badWords.size) return false;
+  const lower = text.toLowerCase();
+  for (const word of badWords) {
+    if (lower.includes(word.toLowerCase())) return true;
+  }
+  return false;
+}
+
+function isCapsAbuse(text) {
+  if (!modConfig.antiCaps) return false;
+  const letters = text.replace(/[^a-zA-Z]/g, '');
+  if (letters.length < 8) return false;
+  const caps = letters.replace(/[^A-Z]/g, '').length;
+  return caps / letters.length > 0.7; // mais de 70% maiúsculas
+}
+
+function isSlowModeViolation(userId) {
+  if (!modConfig.slowMode) return false;
+  const last = floodControl.get('slow_' + userId) || 0;
+  if (Date.now() - last < modConfig.slowMode * 1000) return true;
+  floodControl.set('slow_' + userId, Date.now());
+  return false;
+}
+
+// ─── Ações de moderação ───────────────────────────────────────────────────────
+async function deleteMessage(chatId, messageId) {
+  return telegram('deleteMessage', { chat_id: chatId, message_id: messageId });
+}
+
+async function muteInGroup(userId, minutes) {
+  muteUser(userId, minutes);
+  const until = Math.floor(Date.now() / 1000) + minutes * 60;
+  return telegram('restrictChatMember', {
+    chat_id:     GROUP_ID,
+    user_id:     userId,
+    permissions: { can_send_messages: false },
+    until_date:  until,
+  });
+}
+
+async function unmuteInGroup(userId) {
+  userMuted.delete(userId);
+  return telegram('restrictChatMember', {
+    chat_id:     GROUP_ID,
+    user_id:     userId,
+    permissions: {
+      can_send_messages:       true,
+      can_send_media_messages: true,
+      can_send_polls:          true,
+      can_send_other_messages: true,
+      can_add_web_page_previews: true,
+    },
+  });
+}
+
+async function banFromGroup(userId) {
+  resetWarns(userId);
+  return telegram('banChatMember', { chat_id: GROUP_ID, user_id: userId });
+}
+
+async function unbanFromGroup(userId) {
+  return telegram('unbanChatMember', { chat_id: GROUP_ID, user_id: userId });
+}
+
+async function kickFromGroup(userId) {
+  await telegram('banChatMember', { chat_id: GROUP_ID, user_id: userId });
+  return telegram('unbanChatMember', { chat_id: GROUP_ID, user_id: userId });
+}
+
+async function warnUser(msg, reason) {
+  const userId   = msg.from.id;
+  const name     = msg.from.first_name || 'Usuário';
+  const warns    = addWarn(userId);
+  const username = msg.from.username ? '@' + msg.from.username : name;
+
+  await deleteMessage(GROUP_ID, msg.message_id);
+
+  if (warns >= modConfig.warnLimit) {
+    await banFromGroup(userId);
+    await sendMessage(GROUP_ID,
+      '🚫 *' + username + ' foi banido!*\n' +
+      'Motivo: ' + reason + '\n' +
+      'Avisos acumulados: ' + warns + '/' + modConfig.warnLimit
+    );
+    return;
+  }
+
+  await sendMessage(GROUP_ID,
+    '⚠️ *Aviso para ' + username + '*\n' +
+    'Motivo: ' + reason + '\n' +
+    'Avisos: ' + warns + '/' + modConfig.warnLimit + '\n' +
+    '_' + (modConfig.warnLimit - warns) + ' aviso(s) restante(s) antes do ban._'
+  );
+}
+
+// ─── Moderação de mensagem ────────────────────────────────────────────────────
+async function moderateMessage(msg) {
+  if (!modConfig.enabled) return false;
+  if (!msg.from || msg.from.is_bot) return false;
+
+  const userId = msg.from.id;
+  const text   = msg.text || msg.caption || '';
+
+  // Ignora admins
+  if (ADMIN_IDS.has(userId)) return false;
+
+  // Mute ativo
+  if (isMuted(userId)) {
+    await deleteMessage(GROUP_ID, msg.message_id);
+    return true;
+  }
+
+  // Flood
+  if (isFlood(userId)) {
+    await muteInGroup(userId, modConfig.muteDuration);
+    await deleteMessage(GROUP_ID, msg.message_id);
+    const name = msg.from.first_name || 'Usuário';
+    await sendMessage(GROUP_ID,
+      '🌊 *' + name + ' foi silenciado por flood!*\n' +
+      'Duração: ' + modConfig.muteDuration + ' minutos.'
+    );
+    return true;
+  }
+
+  // Slow mode
+  if (isSlowModeViolation(userId)) {
+    await deleteMessage(GROUP_ID, msg.message_id);
+    return true;
+  }
+
+  // Modo aprovação
+  if (modConfig.approvalMode) {
+    pendingMsgs.set(msg.message_id, {
+      userId, text, approved: false,
+      name: msg.from.first_name || 'Usuário',
+    });
+    await deleteMessage(GROUP_ID, msg.message_id);
+    await sendMessage(ADMIN_IDS.values().next().value,
+      '🔍 *Mensagem pendente de aprovação*\n\n' +
+      'De: ' + (msg.from.username ? '@' + msg.from.username : msg.from.first_name) + '\n' +
+      'Mensagem: ' + text.substring(0, 200),
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ Aprovar', callback_data: 'mod_approve_' + msg.message_id },
+            { text: '❌ Rejeitar', callback_data: 'mod_reject_' + msg.message_id + '_' + userId },
+          ]],
+        },
+      }
+    );
+    return true;
+  }
+
+  // Anti-forward
+  if (modConfig.antiForward && msg.forward_from) {
+    await warnUser(msg, 'Mensagens encaminhadas não são permitidas');
+    return true;
+  }
+
+  // Anti-link
+  if (text && hasExternalLink(text)) {
+    await warnUser(msg, 'Links externos não são permitidos');
+    return true;
+  }
+
+  // Anti-palavrão
+  if (text && hasBadWord(text)) {
+    await warnUser(msg, 'Linguagem inapropriada');
+    return true;
+  }
+
+  // Anti-CAPS
+  if (text && isCapsAbuse(text)) {
+    await warnUser(msg, 'Excesso de letras maiúsculas');
+    return true;
+  }
+
+  return false;
+}
+
+// ─── Painel de moderação (admin) ──────────────────────────────────────────────
+const MOD_KEYBOARD = {
+  inline_keyboard: [
+    [{ text: modConfig.enabled ? '🟢 Moderação: ON'  : '🔴 Moderação: OFF', callback_data: 'mod_toggle_enabled'    }],
+    [
+      { text: modConfig.antiSpam    ? '✅ Anti-spam'    : '❌ Anti-spam',    callback_data: 'mod_toggle_antispam'   },
+      { text: modConfig.antiLink    ? '✅ Anti-link'    : '❌ Anti-link',    callback_data: 'mod_toggle_antilink'   },
+    ],
+    [
+      { text: modConfig.antiBadWords ? '✅ Anti-palavrão' : '❌ Anti-palavrão', callback_data: 'mod_toggle_badwords' },
+      { text: modConfig.antiCaps    ? '✅ Anti-CAPS'    : '❌ Anti-CAPS',    callback_data: 'mod_toggle_anticaps'   },
+    ],
+    [
+      { text: modConfig.antiFlood   ? '✅ Anti-flood'   : '❌ Anti-flood',   callback_data: 'mod_toggle_antiflood'  },
+      { text: modConfig.antiForward ? '✅ Anti-forward' : '❌ Anti-forward', callback_data: 'mod_toggle_antiforward'},
+    ],
+    [{ text: modConfig.approvalMode ? '🔒 Modo aprovação: ON' : '🔓 Modo aprovação: OFF', callback_data: 'mod_toggle_approval' }],
+    [
+      { text: '⚠️ Avisos: ' + modConfig.warnLimit,    callback_data: 'mod_set_warnlimit'  },
+      { text: '🔇 Mute: ' + modConfig.muteDuration + 'min', callback_data: 'mod_set_mute'  },
+    ],
+    [
+      { text: '🚫 Palavras proibidas',  callback_data: 'mod_badwords_menu'  },
+      { text: '✅ Links permitidos',    callback_data: 'mod_whitelist_menu' },
+    ],
+    [
+      { text: '👤 Gerenciar usuário',   callback_data: 'mod_user_menu'      },
+      { text: '📋 Ver warns',           callback_data: 'mod_view_warns'     },
+    ],
+    [{ text: '⬅️ Voltar ao admin',      callback_data: 'admin_menu'         }],
+  ],
+};
+
+function buildModKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: (modConfig.enabled ? '🟢' : '🔴') + ' Moderação: ' + (modConfig.enabled ? 'ON' : 'OFF'), callback_data: 'mod_toggle_enabled' }],
+      [
+        { text: (modConfig.antiSpam     ? '✅' : '❌') + ' Anti-spam',    callback_data: 'mod_toggle_antispam'    },
+        { text: (modConfig.antiLink     ? '✅' : '❌') + ' Anti-link',    callback_data: 'mod_toggle_antilink'    },
+      ],
+      [
+        { text: (modConfig.antiBadWords ? '✅' : '❌') + ' Anti-palavrão', callback_data: 'mod_toggle_badwords'  },
+        { text: (modConfig.antiCaps     ? '✅' : '❌') + ' Anti-CAPS',    callback_data: 'mod_toggle_anticaps'    },
+      ],
+      [
+        { text: (modConfig.antiFlood    ? '✅' : '❌') + ' Anti-flood',   callback_data: 'mod_toggle_antiflood'   },
+        { text: (modConfig.antiForward  ? '✅' : '❌') + ' Anti-forward', callback_data: 'mod_toggle_antiforward' },
+      ],
+      [{ text: (modConfig.approvalMode  ? '🔒' : '🔓') + ' Modo aprovação: ' + (modConfig.approvalMode ? 'ON' : 'OFF'), callback_data: 'mod_toggle_approval' }],
+      [
+        { text: '⚠️ Limite warns: ' + modConfig.warnLimit,       callback_data: 'mod_set_warnlimit' },
+        { text: '🔇 Mute padrão: ' + modConfig.muteDuration + 'min', callback_data: 'mod_set_mute'  },
+      ],
+      [
+        { text: '🚫 Palavras proibidas (' + badWords.size + ')', callback_data: 'mod_badwords_menu'  },
+        { text: '✅ Links permitidos (' + allowedDomains.size + ')', callback_data: 'mod_whitelist_menu' },
+      ],
+      [
+        { text: '👤 Gerenciar usuário', callback_data: 'mod_user_menu'  },
+        { text: '📋 Ver warns',         callback_data: 'mod_view_warns' },
+      ],
+      [{ text: '⬅️ Voltar ao admin', callback_data: 'admin_menu' }],
+    ],
+  };
+}
+
+async function handleModPanel(chatId) {
+  const text = [
+    '🛡️ *Painel de Moderação — FliixHub*',
+    '',
+    'Configure as regras do grupo abaixo.',
+    'Alterações entram em vigor imediatamente.',
+  ].join('\n');
+  await sendMessage(chatId, text, { reply_markup: buildModKeyboard() });
+}
+
+async function handleModToggle(chatId, key) {
+  const map = {
+    'mod_toggle_enabled':    'enabled',
+    'mod_toggle_antispam':   'antiSpam',
+    'mod_toggle_antilink':   'antiLink',
+    'mod_toggle_badwords':   'antiBadWords',
+    'mod_toggle_anticaps':   'antiCaps',
+    'mod_toggle_antiflood':  'antiFlood',
+    'mod_toggle_antiforward':'antiForward',
+    'mod_toggle_approval':   'approvalMode',
+  };
+  const field = map[key];
+  if (!field) return;
+  modConfig[field] = !modConfig[field];
+  const state = modConfig[field] ? 'ativado ✅' : 'desativado ❌';
+  await sendMessage(chatId, '✅ *' + field + '* ' + state, { reply_markup: buildModKeyboard() });
+}
+
+async function handleModBadwordsMenu(chatId) {
+  const list = badWords.size ? [...badWords].map((w, i) => (i+1) + '. ' + w).join('\n') : '_Nenhuma palavra cadastrada_';
+  const text = [
+    '🚫 *Palavras Proibidas*',
+    '',
+    list,
+    '',
+    'Para *adicionar*: `/addword palavra`',
+    'Para *remover*: `/delword palavra`',
+  ].join('\n');
+  await sendMessage(chatId, text, {
+    reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'mod_panel' }]] },
+  });
+}
+
+async function handleModWhitelistMenu(chatId) {
+  const list = [...allowedDomains].map((d, i) => (i+1) + '. ' + d).join('\n');
+  const text = [
+    '✅ *Links Permitidos (whitelist)*',
+    '',
+    list,
+    '',
+    'Para *adicionar*: `/addlink dominio.com`',
+    'Para *remover*: `/dellink dominio.com`',
+  ].join('\n');
+  await sendMessage(chatId, text, {
+    reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'mod_panel' }]] },
+  });
+}
+
+async function handleModViewWarns(chatId) {
+  if (!userWarns.size) {
+    return sendMessage(chatId, '✅ Nenhum usuário com avisos no momento.', {
+      reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'mod_panel' }]] },
+    });
+  }
+  const list = [...userWarns.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, w]) => 'ID `' + id + '` — ' + w + ' aviso(s)').join('\n');
+  await sendMessage(chatId,
+    '⚠️ *Usuários com avisos:*\n\n' + list + '\n\nUse `/clearwarn ID` para limpar.',
+    { reply_markup: { inline_keyboard: [[{ text: '⬅️ Voltar', callback_data: 'mod_panel' }]] } }
+  );
+}
+
+async function handleModUserMenu(chatId) {
+  const session = getSession(chatId);
+  session.waitingModUser = true;
+  await sendMessage(chatId,
+    '👤 *Gerenciar usuário*\n\nDigite o ID ou @username do usuário:',
+    { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'mod_panel' }]] } }
+  );
+}
+
+async function handleModUserActions(chatId, target) {
+  const session = getSession(chatId);
+  session.modTarget = target;
+  await sendMessage(chatId,
+    '👤 *Usuário:* `' + target + '`\n\nO que deseja fazer?',
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '⚠️ Warn',   callback_data: 'mod_action_warn'   },
+            { text: '🔇 Mute',   callback_data: 'mod_action_mute'   },
+          ],
+          [
+            { text: '🔊 Unmute', callback_data: 'mod_action_unmute' },
+            { text: '👢 Kick',   callback_data: 'mod_action_kick'   },
+          ],
+          [
+            { text: '🚫 Ban',    callback_data: 'mod_action_ban'    },
+            { text: '✅ Unban',  callback_data: 'mod_action_unban'  },
+          ],
+          [
+            { text: '🗑️ Limpar warns', callback_data: 'mod_action_clearwarn' },
+          ],
+          [{ text: '⬅️ Voltar', callback_data: 'mod_panel' }],
+        ],
+      },
+    }
+  );
+}
+
+async function executeModAction(chatId, action) {
+  const session = getSession(chatId);
+  const target  = session.modTarget;
+  if (!target) return sendMessage(chatId, '❌ Nenhum usuário selecionado.', { reply_markup: buildModKeyboard() });
+
+  const userId = parseInt(target) || target;
+
+  try {
+    switch (action) {
+      case 'warn':
+        addWarn(userId);
+        await sendMessage(chatId, '⚠️ Aviso registrado para `' + target + '`. Total: ' + getWarns(userId));
+        break;
+      case 'mute':
+        await muteInGroup(userId, modConfig.muteDuration);
+        await sendMessage(chatId, '🔇 Usuário `' + target + '` silenciado por ' + modConfig.muteDuration + ' min.');
+        await sendMessage(GROUP_ID, '🔇 Usuário silenciado por ' + modConfig.muteDuration + ' minutos pelo admin.');
+        break;
+      case 'unmute':
+        await unmuteInGroup(userId);
+        await sendMessage(chatId, '🔊 Usuário `' + target + '` desmutado.');
+        break;
+      case 'kick':
+        await kickFromGroup(userId);
+        await sendMessage(chatId, '👢 Usuário `' + target + '` removido do grupo.');
+        await sendMessage(GROUP_ID, '👢 Um usuário foi removido do grupo pelo admin.');
+        break;
+      case 'ban':
+        await banFromGroup(userId);
+        await sendMessage(chatId, '🚫 Usuário `' + target + '` banido permanentemente.');
+        await sendMessage(GROUP_ID, '🚫 Um usuário foi banido do grupo pelo admin.');
+        break;
+      case 'unban':
+        await unbanFromGroup(userId);
+        await sendMessage(chatId, '✅ Usuário `' + target + '` desbanido.');
+        break;
+      case 'clearwarn':
+        resetWarns(userId);
+        await sendMessage(chatId, '✅ Avisos de `' + target + '` limpos.');
+        break;
+    }
+  } catch (e) {
+    await sendMessage(chatId, '❌ Erro: ' + e.message + '\n\nVerifica se o bot é admin do grupo.');
+  }
+
+  await handleModPanel(chatId);
+}
+
+async function handleModSetWarnLimit(chatId) {
+  const session = getSession(chatId);
+  session.waitingWarnLimit = true;
+  await sendMessage(chatId, '⚠️ Digite o novo limite de avisos antes do ban (atual: ' + modConfig.warnLimit + '):');
+}
+
+async function handleModSetMute(chatId) {
+  const session = getSession(chatId);
+  session.waitingMuteDuration = true;
+  await sendMessage(chatId, '🔇 Digite a duração padrão do mute em minutos (atual: ' + modConfig.muteDuration + '):');
 }
 
 // ─── Inicialização ────────────────────────────────────────────────────────────
@@ -821,11 +1402,10 @@ const PORT = process.env.PORT || 3000;
 
 if (WEBHOOK_URL) {
   server.listen(PORT, async () => {
-    console.log(`[Bot] Servidor na porta ${PORT}`);
+    console.log('[Bot] Servidor na porta ' + PORT);
+    console.log('[Bot] Webhook Supabase: ' + WEBHOOK_URL.replace('/webhook', '/supabase-webhook'));
     await setWebhook();
-    startNewsChecker();
   });
 } else {
-  startNewsChecker();
   polling();
 }
