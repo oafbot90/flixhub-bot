@@ -828,10 +828,8 @@ async function handleSupabaseWebhook(body) {
       return;
     }
 
-    if (!record.has_stream) {
-      console.log('[Supabase] Ignorado — has_stream = false/null');
-      return;
-    }
+    // has_stream pode vir false no INSERT e ser atualizado depois
+    // por isso postamos qualquer conteúdo novo independente do has_stream
 
     const uniqueKey = table + '_' + record.id;
     if (postedIds.has(uniqueKey)) {
