@@ -812,315 +812,304 @@ function buildPosterHtml(data) {
   const { title, year, runtime, rating, genres, overview, posterUrl, backdropUrl, type } = data;
   const ratingDisplay = rating ? parseFloat(rating).toFixed(1) : '—';
   const genreDisplay  = (genres || []).slice(0, 3).join(' • ').toUpperCase();
-  const overviewShort = overview ? overview.substring(0, 200) + (overview.length > 200 ? '...' : '') : 'Sem descrição disponível.';
+  const overviewShort = overview ? overview.substring(0, 220) + (overview.length > 220 ? '...' : '') : '';
   const typeLabel     = type === 'movie' ? 'NO CATÁLOGO' : 'NOVA SÉRIE';
-
-  // usa poster como backdrop se não tiver backdrop
-  const bgImg = backdropUrl || posterUrl;
+  const bgImg         = backdropUrl || posterUrl || '';
 
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,900&display=swap" rel="stylesheet">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin:0; padding:0; box-sizing:border-box; }
 
 body {
-  width: 900px;
-  height: 1350px;
-  background: #07070d;
-  font-family: 'Montserrat', sans-serif;
+  width: 840px;
+  height: 1260px;
+  background: #000;
+  font-family: 'Inter', sans-serif;
   overflow: hidden;
   position: relative;
 }
 
-/* ── POSTER à direita ocupa metade ── */
-.poster-right {
+/* ── IMAGEM DE FUNDO FULL ── */
+.bg {
   position: absolute;
-  top: 0; right: 0;
-  width: 52%;
-  height: 100%;
-  background-image: url('${posterUrl}');
+  inset: 0;
+  background-image: url('${bgImg}');
   background-size: cover;
   background-position: center top;
-  z-index: 1;
+  z-index: 0;
 }
 
-/* Gradiente sobre o poster para fundir com o fundo */
-.poster-right::before {
+/* overlay escuro na esquerda — exatamente como no exemplo */
+.bg::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    to right,
-    #07070d 0%,
-    rgba(7,7,13,0.5) 40%,
-    rgba(7,7,13,0.0) 100%
-  );
-  z-index: 2;
+  background:
+    linear-gradient(to right,
+      rgba(0,0,0,0.97) 0%,
+      rgba(0,0,0,0.92) 30%,
+      rgba(0,0,0,0.55) 52%,
+      rgba(0,0,0,0.0)  100%
+    ),
+    linear-gradient(to top,
+      rgba(0,0,0,0.6) 0%,
+      transparent 40%
+    );
 }
 
-/* Gradiente de baixo para cima no poster */
-.poster-right::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to top,
-    #07070d 0%,
-    rgba(7,7,13,0.3) 30%,
-    transparent 70%
-  );
-  z-index: 2;
-}
-
-/* ── LINHA DIAGONAL roxa/azul ── */
+/* ── LINHA DIAGONAL ── */
 .line {
   position: absolute;
   top: 0;
-  left: calc(48% - 2px);
-  width: 4px;
+  left: 52%;
+  width: 2.5px;
   height: 100%;
-  background: linear-gradient(180deg, #6d28d9 0%, #4f46e5 40%, #2563eb 70%, #6d28d9 100%);
+  background: linear-gradient(180deg, #6d28d9 0%, #4f46e5 30%, #3b82f6 60%, #6d28d9 100%);
+  transform: skewX(-2deg);
   z-index: 10;
-  transform: skewX(-1.5deg);
-  box-shadow: 0 0 18px rgba(109,40,217,0.8), 0 0 40px rgba(79,70,229,0.4);
+  box-shadow: 0 0 12px rgba(109,40,217,0.9), 0 0 30px rgba(79,70,229,0.5);
 }
 
-/* ── GLOW ambiente ── */
-.glow-purple {
+/* ── CONTEÚDO ── */
+.wrap {
   position: absolute;
-  top: -150px; left: -150px;
-  width: 600px; height: 600px;
-  background: radial-gradient(circle, rgba(109,40,217,0.22) 0%, transparent 65%);
-  pointer-events: none;
-  z-index: 0;
-}
-.glow-blue {
-  position: absolute;
-  bottom: -100px; left: 50px;
-  width: 500px; height: 500px;
-  background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 65%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ── CONTEÚDO ESQUERDO ── */
-.content {
-  position: absolute;
-  top: 0; left: 0;
-  width: 50%;
-  height: 100%;
-  padding: 52px 44px 44px;
+  inset: 0;
+  z-index: 20;
   display: flex;
   flex-direction: column;
-  z-index: 20;
+  padding: 44px 44px 36px;
+  width: 56%;
 }
 
-/* Logo */
+/* Logo topo */
 .logo {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 48px;
+  margin-bottom: 32px;
 }
-.logo-box {
-  width: 40px; height: 40px;
-  background: linear-gradient(135deg, #7c3aed, #2563eb);
-  border-radius: 10px;
+.logo-icon {
+  width: 38px; height: 38px;
+  background: linear-gradient(135deg, #7c3aed, #3b82f6);
+  border-radius: 9px;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 16px rgba(124,58,237,0.5);
 }
-.logo-box svg { width: 22px; height: 22px; fill: white; }
+.logo-icon svg { width: 20px; height: 20px; fill: white; }
 .logo-name {
-  font-size: 28px; font-weight: 800;
-  color: #ffffff; letter-spacing: -0.5px;
+  font-size: 26px; font-weight: 800;
+  color: #fff; letter-spacing: -0.3px;
 }
-.logo-name em { font-style: normal; color: #818cf8; }
+.logo-name b { color: #818cf8; font-weight: 800; }
 
-/* NOVO badge */
-.novo-wrap { margin-bottom: 12px; }
-.novo-text {
+/* NOVO */
+.novo-block { margin-bottom: 16px; }
+.novo-big {
   font-family: 'Bebas Neue', cursive;
-  font-size: 52px;
-  letter-spacing: 6px;
+  font-size: 56px;
+  letter-spacing: 5px;
   color: #a78bfa;
   line-height: 1;
-  text-shadow: 0 0 30px rgba(167,139,250,0.6);
+  font-style: italic;
 }
 .novo-sub {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 5px;
-  color: #6d28d9;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 4px; color: #7c3aed;
   text-transform: uppercase;
-  margin-top: -2px;
 }
 
-/* Divisor */
-.sep {
-  width: 52px; height: 2px;
-  background: linear-gradient(90deg, #7c3aed, #2563eb);
+/* divisor roxo */
+.bar {
+  width: 48px; height: 3px;
+  background: linear-gradient(90deg, #7c3aed, #3b82f6);
   border-radius: 2px;
-  margin: 18px 0 22px;
+  margin: 14px 0 18px;
 }
 
-/* Título */
+/* TÍTULO grande */
 .title {
   font-family: 'Bebas Neue', cursive;
-  font-size: 72px;
-  line-height: 0.93;
+  font-size: 88px;
+  line-height: 0.9;
   letter-spacing: 2px;
-  color: #ffffff;
+  color: #fff;
   text-transform: uppercase;
-  margin-bottom: 28px;
-  text-shadow: 0 2px 0 rgba(0,0,0,0.8), 0 0 40px rgba(124,58,237,0.3);
+  margin-bottom: 24px;
+  text-shadow: 3px 3px 0 #000, 0 0 40px rgba(124,58,237,0.3);
   word-break: break-word;
+  flex-shrink: 0;
 }
 
-/* Meta linha */
+/* Meta */
 .meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0;
   margin-bottom: 10px;
-  flex-wrap: wrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
 }
-.meta-pill {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 13px; font-weight: 600;
-  color: #cbd5e1;
-}
-.meta-dot {
-  width: 3px; height: 3px; border-radius: 50%;
-  background: #475569;
-}
+.meta-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.meta-sep { margin: 0 12px; color: #475569; }
 
 /* Gêneros */
 .genres {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  color: #818cf8;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 2px; color: #818cf8;
   text-transform: uppercase;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
 }
 
 /* Sinopse */
 .overview {
-  font-size: 13px;
-  line-height: 1.8;
-  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1.75;
+  color: #cbd5e1;
+  margin-bottom: 0;
   flex: 1;
-  margin-bottom: 32px;
   overflow: hidden;
 }
 
 /* Botão */
+.btn-wrap { margin-top: 28px; }
 .btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 20px 24px;
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
-  border-radius: 14px;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 2.5px;
-  color: #ffffff;
+  gap: 16px;
+  padding: 18px 28px;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5, #3b82f6);
+  border-radius: 50px;
+  border: 2px solid rgba(167,139,250,0.5);
+  font-size: 18px; font-weight: 800;
+  letter-spacing: 2px; color: #fff;
   text-transform: uppercase;
-  margin-bottom: 28px;
-  box-shadow: 0 8px 40px rgba(109,40,217,0.55), 0 2px 8px rgba(0,0,0,0.4);
+  box-shadow: 0 0 30px rgba(109,40,217,0.6), 0 8px 24px rgba(0,0,0,0.5);
+  width: 100%;
+  justify-content: center;
 }
-.play-circle {
-  width: 30px; height: 30px;
+.btn-play {
+  width: 32px; height: 32px;
+  background: rgba(255,255,255,0.15);
   border-radius: 50%;
-  background: rgba(255,255,255,0.18);
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px;
-  padding-left: 2px;
+  font-size: 14px;
+  padding-left: 3px;
+  flex-shrink: 0;
 }
 
 /* Footer */
 .footer {
-  border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 18px;
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
-.footer-only {
-  font-size: 10px; font-weight: 700;
-  letter-spacing: 3px; color: #475569;
-  text-transform: uppercase; margin-bottom: 6px;
+.footer-label {
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 2px; color: #6d28d9;
+  text-transform: uppercase;
 }
-.footer-brand {
-  font-size: 22px; font-weight: 800;
-  color: #ffffff; margin-bottom: 10px;
+.footer-logo {
+  display: flex; align-items: center; gap: 10px;
 }
-.footer-brand em { font-style: normal; color: #818cf8; }
+.footer-logo-icon {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, #7c3aed, #3b82f6);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.footer-logo-icon svg { width: 18px; height: 18px; fill: white; }
+.footer-logo-name {
+  font-size: 30px; font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 .devices {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 10px; margin-top: 4px;
 }
-.dev-icons { font-size: 14px; color: #334155; letter-spacing: 2px; }
-.dev-txt {
-  font-size: 9px; font-weight: 700;
-  letter-spacing: 2px; color: #334155;
+.dev-icons { display: flex; gap: 8px; align-items: center; }
+.dev-icon { color: #4b5563; font-size: 16px; }
+.dev-text {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 2px; color: #4b5563;
   text-transform: uppercase;
 }
 </style>
 </head>
 <body>
 
-<div class="glow-purple"></div>
-<div class="glow-blue"></div>
-<div class="poster-right"></div>
+<div class="bg"></div>
 <div class="line"></div>
 
-<div class="content">
-
+<div class="wrap">
+  <!-- Logo -->
   <div class="logo">
-    <div class="logo-box">
+    <div class="logo-icon">
       <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
     </div>
-    <div class="logo-name">Fl<em>i</em>xhub</div>
+    <div class="logo-name">Fl<b>i</b>xhub</div>
   </div>
 
-  <div class="novo-wrap">
-    <div class="novo-text">NOVO</div>
+  <!-- NOVO -->
+  <div class="novo-block">
+    <div class="novo-big">NOVO</div>
     <div class="novo-sub">${typeLabel}</div>
   </div>
 
-  <div class="sep"></div>
+  <div class="bar"></div>
 
+  <!-- Título -->
   <div class="title">${title}</div>
 
+  <!-- Meta -->
   <div class="meta">
-    <div class="meta-pill">📅 ${year}</div>
-    ${runtime ? '<div class="meta-dot"></div><div class="meta-pill">⏱ ' + runtime + '</div>' : ''}
-    <div class="meta-dot"></div>
-    <div class="meta-pill">⭐ ${ratingDisplay}/10</div>
+    <div class="meta-item">📅 ${year}</div>
+    ${runtime ? '<span class="meta-sep">|</span><div class="meta-item">⏱ ' + runtime + '</div>' : ''}
+    <span class="meta-sep">|</span>
+    <div class="meta-item">⭐ ${ratingDisplay}/10</div>
   </div>
 
+  <!-- Gêneros -->
   <div class="genres">${genreDisplay}</div>
 
+  <!-- Sinopse -->
   <div class="overview">${overviewShort}</div>
 
-  <div class="btn">
-    <div class="play-circle">▶</div>
-    ASSISTA AGORA
-  </div>
-
-  <div class="footer">
-    <div class="footer-only">Só no</div>
-    <div class="footer-brand">Fl<em>i</em>xhub</div>
-    <div class="devices">
-      <div class="dev-icons">📱 💻 📺</div>
-      <div class="dev-txt">Disponível em todos os dispositivos</div>
+  <!-- Botão -->
+  <div class="btn-wrap">
+    <div class="btn">
+      <div class="btn-play">▶</div>
+      ASSISTA AGORA
     </div>
   </div>
 
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-label">SÓ NO</div>
+    <div class="footer-logo">
+      <div class="footer-logo-icon">
+        <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+      </div>
+      <div class="footer-logo-name">Flixhub</div>
+    </div>
+    <div class="devices">
+      <div class="dev-icons">
+        <span class="dev-icon">📱</span>
+        <span class="dev-icon">💻</span>
+        <span class="dev-icon">🖥️</span>
+      </div>
+      <div class="dev-text">Disponível em todos os dispositivos</div>
+    </div>
+  </div>
 </div>
+
 </body>
 </html>`;
 }
