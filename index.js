@@ -891,28 +891,51 @@ body{width:900px;height:1350px;background:#0a0a0f;font-family:'Inter',sans-serif
 }
 
 async function generatePosterBuffer(data) {
-  let puppeteer;
-  try { puppeteer = require('puppeteer'); } catch {
-    console.log('[Poster] Puppeteer não instalado — usando foto simples do TMDB');
+  const HCTI_USER = process.env.HCTI_USER_ID;
+  const HCTI_KEY  = process.env.HCTI_API_KEY;
+
+  if (!HCTI_USER || !HCTI_KEY) {
+    console.log('[Poster] HCTI não configurado — usando foto simples do TMDB');
     return null;
   }
 
-  const browser = await puppeteer.launch({
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    headless: 'new',
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-  });
-
   try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 900, height: 1350, deviceScaleFactor: 1 });
-    await page.setContent(buildPosterHtml(data), { waitUntil: 'networkidle0', timeout: 15000 });
-    await new Promise(r => setTimeout(r, 1500));
-    const buffer = await page.screenshot({ type: 'png' });
-    console.log('[Poster] ✅ Gerado com sucesso!');
-    return buffer;
-  } finally {
-    await browser.close();
+    const html = buildPosterHtml(data);
+    const auth = Buffer.from(HCTI_USER + ':' + HCTI_KEY).toString('base64');
+
+    // Cria a imagem via htmlcsstoimage.com
+    const res = await fetch('https://hcti.io/v1/image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + auth,
+      },
+      body: JSON.stringify({
+        html,
+        viewport_width:  900,
+        viewport_height: 1350,
+        device_scale:    1,
+        format:          'png',
+      }),
+    });
+
+    const json = await res.json();
+    if (!json.url) {
+      console.error('[Poster] HCTI erro:', JSON.stringify(json));
+      return null;
+    }
+
+    console.log('[Poster] ✅ URL gerada:', json.url);
+
+    // Baixa a imagem como buffer
+    const imgRes = await fetch(json.url);
+    if (!imgRes.ok) throw new Error('Erro ao baixar imagem: ' + imgRes.status);
+    const arrayBuffer = await imgRes.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+
+  } catch (e) {
+    console.error('[Poster] Erro ao gerar:', e.message);
+    return null;
   }
 }
 
