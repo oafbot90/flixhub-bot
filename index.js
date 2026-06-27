@@ -890,7 +890,7 @@ body{width:900px;height:1350px;background:#0a0a0f;font-family:'Inter',sans-serif
 </body></html>`;
 }
 
-async function generatePosterBuffer(data) {
+async function generatePosterUrl(data) {
   const HCTI_USER = process.env.HCTI_USER_ID;
   const HCTI_KEY  = process.env.HCTI_API_KEY;
 
@@ -900,10 +900,35 @@ async function generatePosterBuffer(data) {
   }
 
   try {
-    const html = buildPosterHtml(data);
+    // Converte imagens do TMDB para base64 pra o HCTI conseguir renderizar
+    async function imgToBase64(url) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) return null;
+        const buf = await r.arrayBuffer();
+        const b64 = Buffer.from(buf).toString('base64');
+        const mime = 'image/jpeg';
+        return 'data:' + mime + ';base64,' + b64;
+      } catch { return null; }
+    }
+
+    console.log('[Poster] Baixando imagens do TMDB...');
+    const [posterB64, backdropB64] = await Promise.all([
+      data.posterUrl   ? imgToBase64(data.posterUrl)   : Promise.resolve(null),
+      data.backdropUrl ? imgToBase64(data.backdropUrl) : Promise.resolve(null),
+    ]);
+
+    // Substitui URLs por base64 no HTML
+    const dataWithB64 = {
+      ...data,
+      posterUrl:   posterB64   || data.posterUrl,
+      backdropUrl: backdropB64 || data.backdropUrl || posterB64 || data.posterUrl,
+    };
+
+    const html = buildPosterHtml(dataWithB64);
     const auth = Buffer.from(HCTI_USER + ':' + HCTI_KEY).toString('base64');
 
-    // Cria a imagem via htmlcsstoimage.com
+    console.log('[Poster] Enviando para HCTI...');
     const res = await fetch('https://hcti.io/v1/image', {
       method: 'POST',
       headers: {
@@ -926,12 +951,7 @@ async function generatePosterBuffer(data) {
     }
 
     console.log('[Poster] ✅ URL gerada:', json.url);
-
-    // Baixa a imagem como buffer
-    const imgRes = await fetch(json.url);
-    if (!imgRes.ok) throw new Error('Erro ao baixar imagem: ' + imgRes.status);
-    const arrayBuffer = await imgRes.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    return json.url;
 
   } catch (e) {
     console.error('[Poster] Erro ao gerar:', e.message);
@@ -940,19 +960,19 @@ async function generatePosterBuffer(data) {
 }
 
 async function sendPosterToGroup(record, contentType) {
-  const isMovie   = contentType === 'movie';
-  const enriched  = await enrichWithTmdb(record, contentType);
-  const title     = enriched.title || enriched.name || 'Sem título';
-  const year      = (isMovie ? enriched.release_date : enriched.first_air_date || '')?.substring(0, 4) || '—';
+  const isMovie    = contentType === 'movie';
+  const enriched   = await enrichWithTmdb(record, contentType);
+  const title      = enriched.title || enriched.name || 'Sem título';
+  const year       = (isMovie ? enriched.release_date : enriched.first_air_date || '')?.substring(0, 4) || '—';
   const runtimeRaw = isMovie ? enriched.runtime : null;
-  const runtime   = runtimeRaw ? Math.floor(runtimeRaw / 60) + 'h ' + (runtimeRaw % 60) + 'min' : null;
-  const rating    = enriched.vote_average;
-  const genres    = enriched.genres || [];
-  const overview  = enriched.overview || '';
-  const posterUrl = enriched.poster_path ? 'https://image.tmdb.org/t/p/original' + enriched.poster_path : null;
+  const runtime    = runtimeRaw ? Math.floor(runtimeRaw / 60) + 'h ' + (runtimeRaw % 60) + 'min' : null;
+  const rating     = enriched.vote_average;
+  const genres     = enriched.genres || [];
+  const overview   = enriched.overview || '';
+  const posterUrl  = enriched.poster_path  ? 'https://image.tmdb.org/t/p/original' + enriched.poster_path  : null;
   const backdropUrl = enriched.backdrop_path ? 'https://image.tmdb.org/t/p/original' + enriched.backdrop_path : posterUrl;
 
-  const label  = isMovie ? '🎬 *NOVO FILME NO CATÁLOGO!*' : '📺 *NOVA SÉRIE NO CATÁLOGO!*';
+  const label   = isMovie ? '🎬 *NOVO FILME NO CATÁLOGO!*' : '📺 *NOVA SÉRIE NO CATÁLOGO!*';
   const caption = [
     label, '',
     '*' + title + '*',
@@ -965,35 +985,57 @@ async function sendPosterToGroup(record, contentType) {
     '📲 [Baixar o app](' + DOWNLOAD_URL + ')',
   ].filter(Boolean).join('\n');
 
-  // Tenta gerar poster personalizado
+  // Tenta gerar poster personalizado via HCTI
   if (posterUrl) {
-    const posterBuffer = await generatePosterBuffer({
+    const posterImgUrl = await generatePosterUrl({
       title, year, runtime, rating, genres, overview, posterUrl, backdropUrl, type: contentType,
-    }).catch(e => { console.error('[Poster] Erro ao gerar:', e.message); return null; });
+    }).catch(e => { console.error('[Poster] Erro:', e.message); return null; });
 
-    if (posterBuffer) {
-      // Envia o poster gerado como buffer
-      const FormData = require('form-data');
-      const form = new FormData();
-      form.append('chat_id', GROUP_ID);
-      form.append('photo', posterBuffer, { filename: 'poster.png', contentType: 'image/png' });
-      form.append('caption', caption);
-      form.append('parse_mode', 'Markdown');
+    if (posterImgUrl) {
+      // Envia a URL da imagem gerada pelo HCTI diretamente pro Telegram
+      const res = await telegram('sendPhoto', {
+        chat_id:    GROUP_ID,
+        photo:      posterImgUrl,
+        caption,
+        parse_mode: 'Markdown',
+      });
 
-      const res = await fetch(
-        'https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/sendPhoto',
-        { method: 'POST', body: form }
-      );
-      const json = await res.json();
-      if (json.ok) {
+      if (res.ok) {
         console.log('[Supabase] ✅ Poster personalizado postado no grupo!');
         return;
       }
-      console.log('[Poster] Falha ao enviar poster — usando foto TMDB:', json.description);
+
+      // Se a URL falhou, tenta baixar como buffer e mandar como arquivo
+      console.log('[Poster] URL falhou, tentando como arquivo...', res.description);
+      try {
+        const imgRes = await fetch(posterImgUrl);
+        if (imgRes.ok) {
+          const FormData = require('form-data');
+          const buf  = Buffer.from(await imgRes.arrayBuffer());
+          const form = new FormData();
+          form.append('chat_id', GROUP_ID);
+          form.append('photo', buf, { filename: 'poster.png', contentType: 'image/png' });
+          form.append('caption', caption);
+          form.append('parse_mode', 'Markdown');
+          const res2 = await fetch(
+            'https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/sendPhoto',
+            { method: 'POST', body: form }
+          );
+          const json2 = await res2.json();
+          if (json2.ok) {
+            console.log('[Supabase] ✅ Poster enviado como arquivo!');
+            return;
+          }
+          console.log('[Poster] Falha também como arquivo:', json2.description);
+        }
+      } catch (e2) {
+        console.error('[Poster] Erro ao baixar/enviar:', e2.message);
+      }
     }
   }
 
   // Fallback: foto simples do TMDB
+  console.log('[Poster] Usando foto simples do TMDB como fallback');
   const { text, poster } = formatItem(enriched, null, contentType);
   const msg = label + '\n\n' + text;
   if (poster) {
