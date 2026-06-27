@@ -807,6 +807,179 @@ async function processUpdate(update) {
 // Guarda IDs já postados pra não duplicar
 const postedIds = new Set();
 
+// ─── Gerador de Poster estilo cinema ─────────────────────────────────────────
+function buildPosterHtml(data) {
+  const { title, year, runtime, rating, genres, overview, posterUrl, backdropUrl, type } = data;
+  const ratingDisplay = rating ? parseFloat(rating).toFixed(1) : '—';
+  const genreDisplay  = (genres || []).slice(0, 3).join(' • ').toUpperCase();
+  const overviewShort = overview ? overview.substring(0, 180) + (overview.length > 180 ? '...' : '') : '';
+  const typeLabel     = type === 'movie' ? 'NO CATÁLOGO' : 'NOVA SÉRIE';
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:900px;height:1350px;background:#0a0a0f;font-family:'Inter',sans-serif;overflow:hidden;position:relative}
+.backdrop{position:absolute;top:0;right:0;width:56%;height:100%;background-image:url('${backdropUrl || posterUrl}');background-size:cover;background-position:center top}
+.backdrop::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,#0a0a0f 0%,#0a0a0f 8%,rgba(10,10,15,0.75) 55%,rgba(10,10,15,0.15) 100%)}
+.diagonal{position:absolute;top:0;left:43%;width:3px;height:100%;background:linear-gradient(to bottom,#7c3aed,#3b82f6,#7c3aed);transform:skewX(-2deg);opacity:0.9;z-index:5}
+.glow-top{position:absolute;top:-80px;left:-80px;width:450px;height:450px;background:radial-gradient(circle,rgba(124,58,237,0.18) 0%,transparent 70%);pointer-events:none}
+.glow-bot{position:absolute;bottom:-80px;left:-80px;width:550px;height:550px;background:radial-gradient(circle,rgba(59,130,246,0.12) 0%,transparent 70%);pointer-events:none}
+.content{position:absolute;top:0;left:0;width:49%;height:100%;padding:56px 48px;display:flex;flex-direction:column;z-index:10}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:44px}
+.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:9px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:22px;height:22px;fill:white}
+.logo-text{font-size:27px;font-weight:700;color:white;letter-spacing:-0.5px}
+.logo-text span{color:#7c3aed}
+.badge-novo{margin-bottom:18px}
+.badge-novo .novo{font-family:'Bebas Neue',sans-serif;font-size:46px;letter-spacing:5px;color:#a78bfa;line-height:1}
+.badge-novo .cat{font-size:12px;font-weight:700;letter-spacing:4px;color:#7c3aed;text-transform:uppercase;margin-top:-2px}
+.divider{width:56px;height:2px;background:linear-gradient(to right,#7c3aed,#3b82f6);margin-bottom:22px;border-radius:2px}
+.title{font-family:'Bebas Neue',sans-serif;font-size:68px;line-height:0.95;letter-spacing:2px;color:#fff;text-transform:uppercase;margin-bottom:26px;text-shadow:0 4px 24px rgba(124,58,237,0.4)}
+.meta{display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap}
+.meta-item{display:flex;align-items:center;gap:5px;font-size:14px;color:#d1d5db;font-weight:500}
+.meta-sep{width:4px;height:4px;border-radius:50%;background:#4b5563}
+.genres{font-size:11px;font-weight:700;letter-spacing:2.5px;color:#7c3aed;text-transform:uppercase;margin-bottom:20px}
+.stars{display:flex;align-items:center;gap:3px;margin-bottom:24px}
+.star{color:#f59e0b;font-size:17px}
+.rating-num{font-size:18px;font-weight:700;color:#f59e0b;margin-left:4px}
+.rating-max{font-size:12px;color:#6b7280;margin-left:2px}
+.overview{font-size:13.5px;line-height:1.75;color:#9ca3af;margin-bottom:36px;flex:1}
+.btn{display:flex;align-items:center;justify-content:center;gap:12px;padding:18px 28px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:12px;font-size:17px;font-weight:800;letter-spacing:2px;color:white;text-transform:uppercase;margin-bottom:28px;box-shadow:0 8px 32px rgba(124,58,237,0.5)}
+.btn-play{width:26px;height:26px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px}
+.footer{border-top:1px solid #1f2937;padding-top:18px}
+.footer-label{font-size:10px;font-weight:700;letter-spacing:3px;color:#4b5563;text-transform:uppercase;margin-bottom:8px}
+.footer-logo{font-size:23px;font-weight:700;color:white}
+.footer-logo span{color:#7c3aed}
+.footer-devices{display:flex;align-items:center;gap:6px;margin-top:8px}
+.dev{font-size:15px;color:#374151}
+.dev-label{font-size:10px;color:#4b5563;letter-spacing:2px;text-transform:uppercase;font-weight:600}
+</style></head><body>
+<div class="glow-top"></div><div class="glow-bot"></div>
+<div class="backdrop"></div>
+<div class="diagonal"></div>
+<div class="content">
+  <div class="logo">
+    <div class="logo-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div>
+    <div class="logo-text">Fl<span>i</span>xhub</div>
+  </div>
+  <div class="badge-novo">
+    <div class="novo">NOVO</div>
+    <div class="cat">${typeLabel}</div>
+  </div>
+  <div class="divider"></div>
+  <div class="title">${title}</div>
+  <div class="meta">
+    <div class="meta-item">📅 ${year}</div>
+    ${runtime ? '<div class="meta-sep"></div><div class="meta-item">⏱ ' + runtime + '</div>' : ''}
+    <div class="meta-sep"></div>
+    <div class="meta-item">⭐ ${ratingDisplay}/10</div>
+  </div>
+  <div class="genres">${genreDisplay}</div>
+  <div class="overview">${overviewShort}</div>
+  <div class="btn"><div class="btn-play">▶</div>ASSISTA AGORA</div>
+  <div class="footer">
+    <div class="footer-label">Só no</div>
+    <div class="footer-logo">Fl<span>i</span>xhub</div>
+    <div class="footer-devices">
+      <span class="dev">📱</span><span class="dev">💻</span><span class="dev">📺</span>
+      <span class="dev-label">Disponível em todos os dispositivos</span>
+    </div>
+  </div>
+</div>
+</body></html>`;
+}
+
+async function generatePosterBuffer(data) {
+  let puppeteer;
+  try { puppeteer = require('puppeteer'); } catch {
+    console.log('[Poster] Puppeteer não instalado — usando foto simples do TMDB');
+    return null;
+  }
+
+  const browser = await puppeteer.launch({
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    headless: 'new',
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 900, height: 1350, deviceScaleFactor: 1 });
+    await page.setContent(buildPosterHtml(data), { waitUntil: 'networkidle0', timeout: 15000 });
+    await new Promise(r => setTimeout(r, 1500));
+    const buffer = await page.screenshot({ type: 'png' });
+    console.log('[Poster] ✅ Gerado com sucesso!');
+    return buffer;
+  } finally {
+    await browser.close();
+  }
+}
+
+async function sendPosterToGroup(record, contentType) {
+  const isMovie   = contentType === 'movie';
+  const enriched  = await enrichWithTmdb(record, contentType);
+  const title     = enriched.title || enriched.name || 'Sem título';
+  const year      = (isMovie ? enriched.release_date : enriched.first_air_date || '')?.substring(0, 4) || '—';
+  const runtimeRaw = isMovie ? enriched.runtime : null;
+  const runtime   = runtimeRaw ? Math.floor(runtimeRaw / 60) + 'h ' + (runtimeRaw % 60) + 'min' : null;
+  const rating    = enriched.vote_average;
+  const genres    = enriched.genres || [];
+  const overview  = enriched.overview || '';
+  const posterUrl = enriched.poster_path ? 'https://image.tmdb.org/t/p/original' + enriched.poster_path : null;
+  const backdropUrl = enriched.backdrop_path ? 'https://image.tmdb.org/t/p/original' + enriched.backdrop_path : posterUrl;
+
+  const label  = isMovie ? '🎬 *NOVO FILME NO CATÁLOGO!*' : '📺 *NOVA SÉRIE NO CATÁLOGO!*';
+  const caption = [
+    label, '',
+    '*' + title + '*',
+    '⭐ ' + (parseFloat(rating || 0).toFixed(1)) + '/10  |  📅 ' + year + (runtime ? '  |  ⏱ ' + runtime : ''),
+    genres.length ? '🎭 ' + genres.slice(0, 3).join(' · ') : '',
+    '',
+    overview ? overview.substring(0, 180) + '...' : '',
+    '',
+    '▶️ [Assistir agora](' + SITE_URL + ')',
+    '📲 [Baixar o app](' + DOWNLOAD_URL + ')',
+  ].filter(Boolean).join('\n');
+
+  // Tenta gerar poster personalizado
+  if (posterUrl) {
+    const posterBuffer = await generatePosterBuffer({
+      title, year, runtime, rating, genres, overview, posterUrl, backdropUrl, type: contentType,
+    }).catch(e => { console.error('[Poster] Erro ao gerar:', e.message); return null; });
+
+    if (posterBuffer) {
+      // Envia o poster gerado como buffer
+      const FormData = require('form-data');
+      const form = new FormData();
+      form.append('chat_id', GROUP_ID);
+      form.append('photo', posterBuffer, { filename: 'poster.png', contentType: 'image/png' });
+      form.append('caption', caption);
+      form.append('parse_mode', 'Markdown');
+
+      const res = await fetch(
+        'https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/sendPhoto',
+        { method: 'POST', body: form }
+      );
+      const json = await res.json();
+      if (json.ok) {
+        console.log('[Supabase] ✅ Poster personalizado postado no grupo!');
+        return;
+      }
+      console.log('[Poster] Falha ao enviar poster — usando foto TMDB:', json.description);
+    }
+  }
+
+  // Fallback: foto simples do TMDB
+  const { text, poster } = formatItem(enriched, null, contentType);
+  const msg = label + '\n\n' + text;
+  if (poster) {
+    await sendPhoto(GROUP_ID, poster, msg).catch(() => sendMessage(GROUP_ID, msg));
+  } else {
+    await sendMessage(GROUP_ID, msg);
+  }
+}
+
 async function handleSupabaseWebhook(body) {
   try {
     console.log('[Supabase] Payload recebido:', body.substring(0, 400));
@@ -814,7 +987,7 @@ async function handleSupabaseWebhook(body) {
     const payload = JSON.parse(body);
     const { type, table, record } = payload;
 
-    console.log('[Supabase] type:', type, '| table:', table, '| has_stream:', record && record.has_stream, '| title:', record && (record.title || record.name));
+    console.log('[Supabase] type:', type, '| table:', table, '| title:', record && (record.title || record.name));
 
     if (!['INSERT', 'UPDATE'].includes(type) || !record) {
       console.log('[Supabase] Ignorado — type invalido ou sem record');
@@ -828,9 +1001,6 @@ async function handleSupabaseWebhook(body) {
       return;
     }
 
-    // has_stream pode vir false no INSERT e ser atualizado depois
-    // por isso postamos qualquer conteúdo novo independente do has_stream
-
     const uniqueKey = table + '_' + record.id;
     if (postedIds.has(uniqueKey)) {
       console.log('[Supabase] Ignorado — ja postado:', uniqueKey);
@@ -838,28 +1008,14 @@ async function handleSupabaseWebhook(body) {
     }
     postedIds.add(uniqueKey);
 
-    // Limpa cache antigo (mantém só os últimos 200)
     if (postedIds.size > 200) {
       const first = postedIds.values().next().value;
       postedIds.delete(first);
     }
 
-    console.log('[Supabase] ' + type + ' recebido:', record.title || record.name);
-
     const contentType = isMovie ? 'movie' : 'series';
-    const label       = isMovie ? '🆕 *NOVO FILME ADICIONADO!*' : '🆕 *NOVA SÉRIE ADICIONADA!*';
+    await sendPosterToGroup(record, contentType);
 
-    const enriched         = await enrichWithTmdb(record, contentType);
-    const { text, poster } = formatItem(enriched, null, contentType);
-    const msg              = label + '\n\n' + text;
-
-    if (poster) {
-      await sendPhoto(GROUP_ID, poster, msg).catch(() => sendMessage(GROUP_ID, msg));
-    } else {
-      await sendMessage(GROUP_ID, msg);
-    }
-
-    console.log('[Supabase] ✅ Postado no grupo instantaneamente!');
   } catch (e) {
     console.error('[Supabase Webhook] Erro:', e.message);
   }
