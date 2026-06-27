@@ -812,9 +812,13 @@ function buildPosterHtml(data) {
   const { title, year, runtime, rating, genres, overview, posterUrl, backdropUrl, type } = data;
   const ratingDisplay = rating ? parseFloat(rating).toFixed(1) : '—';
   const genreDisplay  = (genres || []).slice(0, 3).join(' • ').toUpperCase();
-  const overviewShort = overview ? overview.substring(0, 200) + (overview.length > 200 ? '...' : '') : '';
+  const overviewShort = overview ? overview.substring(0, 220) + (overview.length > 220 ? '...' : '') : '';
   const typeLabel     = type === 'movie' ? 'NO CATÁLOGO' : 'NOVA SÉRIE';
   const bgImg         = posterUrl || '';
+
+  // Tamanho do título dinâmico baseado no comprimento
+  const titleLen = title.length;
+  const titleSize = titleLen <= 8 ? 100 : titleLen <= 14 ? 82 : titleLen <= 20 ? 68 : titleLen <= 28 ? 56 : 44;
 
   return `<!DOCTYPE html>
 <html>
@@ -832,7 +836,6 @@ body {
   position: relative;
 }
 
-/* IMAGEM DO FILME — ocupa toda a metade direita, full height */
 .img-right {
   position: absolute;
   top: 0; right: 0;
@@ -843,194 +846,173 @@ body {
   background-position: center top;
   z-index: 1;
 }
-
-/* overlay: fundo preto vem da esquerda, transparente na direita */
 .img-right::before {
   content: '';
   position: absolute;
   inset: 0;
   background:
     linear-gradient(to right,
-      #000000 0%,
-      #000000 5%,
-      rgba(0,0,0,0.88) 28%,
-      rgba(0,0,0,0.45) 50%,
-      rgba(0,0,0,0.0)  100%
+      #000 0%,
+      #000 5%,
+      rgba(0,0,0,0.92) 25%,
+      rgba(0,0,0,0.5) 48%,
+      rgba(0,0,0,0.0) 100%
     );
 }
-
-/* sombra embaixo */
 .img-right::after {
   content: '';
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  height: 35%;
-  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+  height: 30%;
+  background: linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 100%);
 }
 
-/* LINHA DIAGONAL roxa */
 .vline {
   position: absolute;
   top: 0;
-  left: 41%;
-  width: 3px;
+  left: 41.5%;
+  width: 2.5px;
   height: 100%;
-  background: linear-gradient(180deg,
-    #6d28d9 0%,
-    #4f46e5 25%,
-    #3b82f6 55%,
-    #4f46e5 80%,
-    #6d28d9 100%
-  );
+  background: linear-gradient(180deg, #6d28d9 0%, #4f46e5 30%, #3b82f6 60%, #6d28d9 100%);
   transform: skewX(-2deg);
   z-index: 10;
-  box-shadow: 0 0 14px rgba(109,40,217,0.9), 0 0 35px rgba(79,70,229,0.4);
+  box-shadow: 0 0 12px rgba(109,40,217,0.9), 0 0 30px rgba(79,70,229,0.4);
 }
 
-/* CONTEÚDO ESQUERDO */
 .left {
   position: absolute;
   top: 0; left: 0;
-  width: 46%;
+  width: 45%;
   height: 100%;
-  padding: 52px 44px 40px;
+  padding: 50px 42px 38px;
   z-index: 20;
   display: flex;
   flex-direction: column;
 }
 
-/* Logo */
-.logo { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+.logo { display: flex; align-items: center; gap: 11px; margin-bottom: 34px; }
 .logo-box {
-  width: 44px; height: 44px;
+  width: 42px; height: 42px;
   background: linear-gradient(135deg, #7c3aed, #3b82f6);
   border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
 }
-.logo-box svg { width: 24px; height: 24px; fill: white; }
-.logo-name { font-size: 30px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+.logo-box svg { width: 22px; height: 22px; fill: white; }
+.logo-name { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
 .logo-name em { font-style: normal; color: #818cf8; }
 
-/* NOVO */
-.novo { margin-bottom: 14px; }
+.novo { margin-bottom: 12px; }
 .novo-big {
   font-family: 'Bebas Neue', cursive;
-  font-size: 64px;
+  font-size: 60px;
   font-style: italic;
   letter-spacing: 5px;
   color: #a78bfa;
   line-height: 1;
-  text-shadow: 0 0 30px rgba(167,139,250,0.5);
+  text-shadow: 0 0 25px rgba(167,139,250,0.5);
 }
 .novo-sub {
-  font-size: 13px; font-weight: 700;
+  font-size: 12px; font-weight: 700;
   letter-spacing: 4px; color: #7c3aed;
   text-transform: uppercase;
   margin-top: 2px;
 }
 
-/* barra */
 .bar {
-  width: 52px; height: 3px;
+  width: 48px; height: 3px;
   background: linear-gradient(90deg, #7c3aed, #3b82f6);
   border-radius: 2px;
-  margin: 16px 0 20px;
+  margin: 14px 0 18px;
 }
 
-/* TÍTULO GRANDE */
 .title {
   font-family: 'Bebas Neue', cursive;
-  font-size: 96px;
-  line-height: 0.88;
-  letter-spacing: 2px;
-  color: #ffffff;
+  font-size: ${titleSize}px;
+  line-height: 0.9;
+  letter-spacing: 1.5px;
+  color: #fff;
   text-transform: uppercase;
-  margin-bottom: 28px;
-  text-shadow: 3px 3px 0 rgba(0,0,0,0.8), 0 0 40px rgba(124,58,237,0.25);
+  margin-bottom: 22px;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.9), 0 0 35px rgba(124,58,237,0.2);
   word-break: break-word;
   flex-shrink: 0;
 }
 
-/* meta */
 .meta {
-  display: flex; align-items: center; gap: 0;
-  font-size: 16px; font-weight: 600; color: #e2e8f0;
-  margin-bottom: 10px; flex-wrap: wrap;
+  display: flex; align-items: center;
+  font-size: 15px; font-weight: 600; color: #e2e8f0;
+  margin-bottom: 8px; flex-wrap: wrap; gap: 0;
 }
-.meta-sep { margin: 0 12px; color: #4b5563; }
+.meta-sep { margin: 0 10px; color: #4b5563; }
 
-/* gêneros */
 .genres {
-  font-size: 13px; font-weight: 700;
-  letter-spacing: 2.5px; color: #818cf8;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 2px; color: #818cf8;
   text-transform: uppercase;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
-/* sinopse */
 .overview {
-  font-size: 15px; line-height: 1.75;
+  font-size: 14px; line-height: 1.75;
   color: #cbd5e1;
   flex: 1;
   overflow: hidden;
 }
 
-/* botão */
-.btn-wrap { margin-top: 30px; }
+/* botão numa só linha — nunca quebra */
+.btn-wrap { margin-top: 28px; flex-shrink: 0; }
 .btn {
   display: flex; align-items: center;
-  justify-content: center; gap: 16px;
-  padding: 22px 28px;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px 32px;
   background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
   border-radius: 50px;
-  border: 2px solid rgba(167,139,250,0.45);
-  font-size: 20px; font-weight: 800;
+  border: 2px solid rgba(167,139,250,0.4);
+  font-size: 18px; font-weight: 800;
   letter-spacing: 2.5px; color: #fff;
   text-transform: uppercase;
-  box-shadow:
-    0 0 0 1px rgba(109,40,217,0.3),
-    0 0 30px rgba(109,40,217,0.55),
-    inset 0 1px 0 rgba(255,255,255,0.1);
+  white-space: nowrap;
+  box-shadow: 0 0 28px rgba(109,40,217,0.55), inset 0 1px 0 rgba(255,255,255,0.1);
+  width: 100%;
 }
 .btn-play {
-  width: 36px; height: 36px;
+  width: 34px; height: 34px;
   background: rgba(255,255,255,0.15);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px; padding-left: 3px;
+  font-size: 15px; padding-left: 3px;
   flex-shrink: 0;
 }
 
-/* footer */
-.footer { margin-top: 22px; }
+.footer { margin-top: 20px; flex-shrink: 0; }
 .footer-label {
   font-size: 12px; font-weight: 700;
   letter-spacing: 3px; color: #6d28d9;
   text-transform: uppercase;
   margin-bottom: 6px;
 }
-.footer-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.footer-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .footer-icon {
-  width: 34px; height: 34px;
+  width: 32px; height: 32px;
   background: linear-gradient(135deg, #7c3aed, #3b82f6);
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
 }
-.footer-icon svg { width: 18px; height: 18px; fill: white; }
+.footer-icon svg { width: 17px; height: 17px; fill: white; }
 .footer-name {
-  font-size: 34px; font-weight: 800;
-  background: linear-gradient(135deg, #818cf8 0%, #3b82f6 100%);
+  font-size: 32px; font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #3b82f6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: -0.5px;
 }
-.devices { display: flex; align-items: center; gap: 10px; }
-.dev-icons { display: flex; gap: 10px; }
-.dev-icon { font-size: 18px; color: #4b5563; }
+.devices { display: flex; align-items: center; gap: 8px; }
+.dev-icons { display: flex; gap: 8px; }
+.dev-icon { font-size: 17px; color: #4b5563; }
 .dev-text {
-  font-size: 11px; font-weight: 600;
-  letter-spacing: 2px; color: #4b5563;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 1.8px; color: #4b5563;
   text-transform: uppercase;
 }
 </style>
@@ -1041,11 +1023,8 @@ body {
 <div class="vline"></div>
 
 <div class="left">
-
   <div class="logo">
-    <div class="logo-box">
-      <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
-    </div>
+    <div class="logo-box"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div>
     <div class="logo-name">Fl<em>i</em>xhub</div>
   </div>
 
@@ -1066,7 +1045,6 @@ body {
   </div>
 
   <div class="genres">${genreDisplay}</div>
-
   <div class="overview">${overviewShort}</div>
 
   <div class="btn-wrap">
@@ -1079,9 +1057,7 @@ body {
   <div class="footer">
     <div class="footer-label">SÓ NO</div>
     <div class="footer-brand">
-      <div class="footer-icon">
-        <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
-      </div>
+      <div class="footer-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div>
       <div class="footer-name">Flixhub</div>
     </div>
     <div class="devices">
@@ -1093,8 +1069,8 @@ body {
       <div class="dev-text">Disponível em todos os dispositivos</div>
     </div>
   </div>
-
 </div>
+
 </body>
 </html>`;
 }
