@@ -812,83 +812,319 @@ function buildPosterHtml(data) {
   const { title, year, runtime, rating, genres, overview, posterUrl, backdropUrl, type } = data;
   const ratingDisplay = rating ? parseFloat(rating).toFixed(1) : '—';
   const genreDisplay  = (genres || []).slice(0, 3).join(' • ').toUpperCase();
-  const overviewShort = overview ? overview.substring(0, 180) + (overview.length > 180 ? '...' : '') : '';
+  const overviewShort = overview ? overview.substring(0, 200) + (overview.length > 200 ? '...' : '') : 'Sem descrição disponível.';
   const typeLabel     = type === 'movie' ? 'NO CATÁLOGO' : 'NOVA SÉRIE';
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  // usa poster como backdrop se não tiver backdrop
+  const bgImg = backdropUrl || posterUrl;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;900&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}
-body{width:900px;height:1350px;background:#0a0a0f;font-family:'Inter',sans-serif;overflow:hidden;position:relative}
-.backdrop{position:absolute;top:0;right:0;width:56%;height:100%;background-image:url('${backdropUrl || posterUrl}');background-size:cover;background-position:center top}
-.backdrop::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,#0a0a0f 0%,#0a0a0f 8%,rgba(10,10,15,0.75) 55%,rgba(10,10,15,0.15) 100%)}
-.diagonal{position:absolute;top:0;left:43%;width:3px;height:100%;background:linear-gradient(to bottom,#7c3aed,#3b82f6,#7c3aed);transform:skewX(-2deg);opacity:0.9;z-index:5}
-.glow-top{position:absolute;top:-80px;left:-80px;width:450px;height:450px;background:radial-gradient(circle,rgba(124,58,237,0.18) 0%,transparent 70%);pointer-events:none}
-.glow-bot{position:absolute;bottom:-80px;left:-80px;width:550px;height:550px;background:radial-gradient(circle,rgba(59,130,246,0.12) 0%,transparent 70%);pointer-events:none}
-.content{position:absolute;top:0;left:0;width:49%;height:100%;padding:56px 48px;display:flex;flex-direction:column;z-index:10}
-.logo{display:flex;align-items:center;gap:10px;margin-bottom:44px}
-.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:9px;display:flex;align-items:center;justify-content:center}
-.logo-icon svg{width:22px;height:22px;fill:white}
-.logo-text{font-size:27px;font-weight:700;color:white;letter-spacing:-0.5px}
-.logo-text span{color:#7c3aed}
-.badge-novo{margin-bottom:18px}
-.badge-novo .novo{font-family:'Bebas Neue',sans-serif;font-size:46px;letter-spacing:5px;color:#a78bfa;line-height:1}
-.badge-novo .cat{font-size:12px;font-weight:700;letter-spacing:4px;color:#7c3aed;text-transform:uppercase;margin-top:-2px}
-.divider{width:56px;height:2px;background:linear-gradient(to right,#7c3aed,#3b82f6);margin-bottom:22px;border-radius:2px}
-.title{font-family:'Bebas Neue',sans-serif;font-size:68px;line-height:0.95;letter-spacing:2px;color:#fff;text-transform:uppercase;margin-bottom:26px;text-shadow:0 4px 24px rgba(124,58,237,0.4)}
-.meta{display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap}
-.meta-item{display:flex;align-items:center;gap:5px;font-size:14px;color:#d1d5db;font-weight:500}
-.meta-sep{width:4px;height:4px;border-radius:50%;background:#4b5563}
-.genres{font-size:11px;font-weight:700;letter-spacing:2.5px;color:#7c3aed;text-transform:uppercase;margin-bottom:20px}
-.stars{display:flex;align-items:center;gap:3px;margin-bottom:24px}
-.star{color:#f59e0b;font-size:17px}
-.rating-num{font-size:18px;font-weight:700;color:#f59e0b;margin-left:4px}
-.rating-max{font-size:12px;color:#6b7280;margin-left:2px}
-.overview{font-size:13.5px;line-height:1.75;color:#9ca3af;margin-bottom:36px;flex:1}
-.btn{display:flex;align-items:center;justify-content:center;gap:12px;padding:18px 28px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:12px;font-size:17px;font-weight:800;letter-spacing:2px;color:white;text-transform:uppercase;margin-bottom:28px;box-shadow:0 8px 32px rgba(124,58,237,0.5)}
-.btn-play{width:26px;height:26px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px}
-.footer{border-top:1px solid #1f2937;padding-top:18px}
-.footer-label{font-size:10px;font-weight:700;letter-spacing:3px;color:#4b5563;text-transform:uppercase;margin-bottom:8px}
-.footer-logo{font-size:23px;font-weight:700;color:white}
-.footer-logo span{color:#7c3aed}
-.footer-devices{display:flex;align-items:center;gap:6px;margin-top:8px}
-.dev{font-size:15px;color:#374151}
-.dev-label{font-size:10px;color:#4b5563;letter-spacing:2px;text-transform:uppercase;font-weight:600}
-</style></head><body>
-<div class="glow-top"></div><div class="glow-bot"></div>
-<div class="backdrop"></div>
-<div class="diagonal"></div>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 900px;
+  height: 1350px;
+  background: #07070d;
+  font-family: 'Montserrat', sans-serif;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── POSTER à direita ocupa metade ── */
+.poster-right {
+  position: absolute;
+  top: 0; right: 0;
+  width: 52%;
+  height: 100%;
+  background-image: url('${posterUrl}');
+  background-size: cover;
+  background-position: center top;
+  z-index: 1;
+}
+
+/* Gradiente sobre o poster para fundir com o fundo */
+.poster-right::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    #07070d 0%,
+    rgba(7,7,13,0.5) 40%,
+    rgba(7,7,13,0.0) 100%
+  );
+  z-index: 2;
+}
+
+/* Gradiente de baixo para cima no poster */
+.poster-right::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    #07070d 0%,
+    rgba(7,7,13,0.3) 30%,
+    transparent 70%
+  );
+  z-index: 2;
+}
+
+/* ── LINHA DIAGONAL roxa/azul ── */
+.line {
+  position: absolute;
+  top: 0;
+  left: calc(48% - 2px);
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, #6d28d9 0%, #4f46e5 40%, #2563eb 70%, #6d28d9 100%);
+  z-index: 10;
+  transform: skewX(-1.5deg);
+  box-shadow: 0 0 18px rgba(109,40,217,0.8), 0 0 40px rgba(79,70,229,0.4);
+}
+
+/* ── GLOW ambiente ── */
+.glow-purple {
+  position: absolute;
+  top: -150px; left: -150px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(109,40,217,0.22) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+.glow-blue {
+  position: absolute;
+  bottom: -100px; left: 50px;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── CONTEÚDO ESQUERDO ── */
+.content {
+  position: absolute;
+  top: 0; left: 0;
+  width: 50%;
+  height: 100%;
+  padding: 52px 44px 44px;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+
+/* Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 48px;
+}
+.logo-box {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, #7c3aed, #2563eb);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(124,58,237,0.5);
+}
+.logo-box svg { width: 22px; height: 22px; fill: white; }
+.logo-name {
+  font-size: 28px; font-weight: 800;
+  color: #ffffff; letter-spacing: -0.5px;
+}
+.logo-name em { font-style: normal; color: #818cf8; }
+
+/* NOVO badge */
+.novo-wrap { margin-bottom: 12px; }
+.novo-text {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 52px;
+  letter-spacing: 6px;
+  color: #a78bfa;
+  line-height: 1;
+  text-shadow: 0 0 30px rgba(167,139,250,0.6);
+}
+.novo-sub {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 5px;
+  color: #6d28d9;
+  text-transform: uppercase;
+  margin-top: -2px;
+}
+
+/* Divisor */
+.sep {
+  width: 52px; height: 2px;
+  background: linear-gradient(90deg, #7c3aed, #2563eb);
+  border-radius: 2px;
+  margin: 18px 0 22px;
+}
+
+/* Título */
+.title {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 72px;
+  line-height: 0.93;
+  letter-spacing: 2px;
+  color: #ffffff;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.8), 0 0 40px rgba(124,58,237,0.3);
+  word-break: break-word;
+}
+
+/* Meta linha */
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.meta-pill {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 600;
+  color: #cbd5e1;
+}
+.meta-dot {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: #475569;
+}
+
+/* Gêneros */
+.genres {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #818cf8;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+
+/* Sinopse */
+.overview {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #94a3b8;
+  flex: 1;
+  margin-bottom: 32px;
+  overflow: hidden;
+}
+
+/* Botão */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  color: #ffffff;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+  box-shadow: 0 8px 40px rgba(109,40,217,0.55), 0 2px 8px rgba(0,0,0,0.4);
+}
+.play-circle {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  padding-left: 2px;
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 18px;
+}
+.footer-only {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 3px; color: #475569;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.footer-brand {
+  font-size: 22px; font-weight: 800;
+  color: #ffffff; margin-bottom: 10px;
+}
+.footer-brand em { font-style: normal; color: #818cf8; }
+.devices {
+  display: flex; align-items: center; gap: 8px;
+}
+.dev-icons { font-size: 14px; color: #334155; letter-spacing: 2px; }
+.dev-txt {
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 2px; color: #334155;
+  text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+
+<div class="glow-purple"></div>
+<div class="glow-blue"></div>
+<div class="poster-right"></div>
+<div class="line"></div>
+
 <div class="content">
+
   <div class="logo">
-    <div class="logo-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div>
-    <div class="logo-text">Fl<span>i</span>xhub</div>
+    <div class="logo-box">
+      <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+    </div>
+    <div class="logo-name">Fl<em>i</em>xhub</div>
   </div>
-  <div class="badge-novo">
-    <div class="novo">NOVO</div>
-    <div class="cat">${typeLabel}</div>
+
+  <div class="novo-wrap">
+    <div class="novo-text">NOVO</div>
+    <div class="novo-sub">${typeLabel}</div>
   </div>
-  <div class="divider"></div>
+
+  <div class="sep"></div>
+
   <div class="title">${title}</div>
+
   <div class="meta">
-    <div class="meta-item">📅 ${year}</div>
-    ${runtime ? '<div class="meta-sep"></div><div class="meta-item">⏱ ' + runtime + '</div>' : ''}
-    <div class="meta-sep"></div>
-    <div class="meta-item">⭐ ${ratingDisplay}/10</div>
+    <div class="meta-pill">📅 ${year}</div>
+    ${runtime ? '<div class="meta-dot"></div><div class="meta-pill">⏱ ' + runtime + '</div>' : ''}
+    <div class="meta-dot"></div>
+    <div class="meta-pill">⭐ ${ratingDisplay}/10</div>
   </div>
+
   <div class="genres">${genreDisplay}</div>
+
   <div class="overview">${overviewShort}</div>
-  <div class="btn"><div class="btn-play">▶</div>ASSISTA AGORA</div>
+
+  <div class="btn">
+    <div class="play-circle">▶</div>
+    ASSISTA AGORA
+  </div>
+
   <div class="footer">
-    <div class="footer-label">Só no</div>
-    <div class="footer-logo">Fl<span>i</span>xhub</div>
-    <div class="footer-devices">
-      <span class="dev">📱</span><span class="dev">💻</span><span class="dev">📺</span>
-      <span class="dev-label">Disponível em todos os dispositivos</span>
+    <div class="footer-only">Só no</div>
+    <div class="footer-brand">Fl<em>i</em>xhub</div>
+    <div class="devices">
+      <div class="dev-icons">📱 💻 📺</div>
+      <div class="dev-txt">Disponível em todos os dispositivos</div>
     </div>
   </div>
+
 </div>
-</body></html>`;
+</body>
+</html>`;
 }
+
 
 async function generatePosterUrl(data) {
   const HCTI_USER = process.env.HCTI_USER_ID;
