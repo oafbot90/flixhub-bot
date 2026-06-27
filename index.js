@@ -812,232 +812,224 @@ function buildPosterHtml(data) {
   const { title, year, runtime, rating, genres, overview, posterUrl, backdropUrl, type } = data;
   const ratingDisplay = rating ? parseFloat(rating).toFixed(1) : '—';
   const genreDisplay  = (genres || []).slice(0, 3).join(' • ').toUpperCase();
-  const overviewShort = overview ? overview.substring(0, 220) + (overview.length > 220 ? '...' : '') : '';
+  const overviewShort = overview ? overview.substring(0, 200) + (overview.length > 200 ? '...' : '') : '';
   const typeLabel     = type === 'movie' ? 'NO CATÁLOGO' : 'NOVA SÉRIE';
-  const bgImg         = backdropUrl || posterUrl || '';
+  const bgImg         = posterUrl || '';
 
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-
 body {
   width: 840px;
   height: 1260px;
   background: #000;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', Arial, sans-serif;
   overflow: hidden;
   position: relative;
 }
 
-/* ── IMAGEM DE FUNDO FULL ── */
-.bg {
+/* IMAGEM DO FILME — ocupa toda a metade direita, full height */
+.img-right {
   position: absolute;
-  inset: 0;
+  top: 0; right: 0;
+  width: 58%;
+  height: 100%;
   background-image: url('${bgImg}');
   background-size: cover;
   background-position: center top;
-  z-index: 0;
+  z-index: 1;
 }
 
-/* overlay escuro na esquerda — exatamente como no exemplo */
-.bg::after {
+/* overlay: fundo preto vem da esquerda, transparente na direita */
+.img-right::before {
   content: '';
   position: absolute;
   inset: 0;
   background:
     linear-gradient(to right,
-      rgba(0,0,0,0.97) 0%,
-      rgba(0,0,0,0.92) 30%,
-      rgba(0,0,0,0.55) 52%,
+      #000000 0%,
+      #000000 5%,
+      rgba(0,0,0,0.88) 28%,
+      rgba(0,0,0,0.45) 50%,
       rgba(0,0,0,0.0)  100%
-    ),
-    linear-gradient(to top,
-      rgba(0,0,0,0.6) 0%,
-      transparent 40%
     );
 }
 
-/* ── LINHA DIAGONAL ── */
-.line {
+/* sombra embaixo */
+.img-right::after {
+  content: '';
   position: absolute;
-  top: 0;
-  left: 52%;
-  width: 2.5px;
-  height: 100%;
-  background: linear-gradient(180deg, #6d28d9 0%, #4f46e5 30%, #3b82f6 60%, #6d28d9 100%);
-  transform: skewX(-2deg);
-  z-index: 10;
-  box-shadow: 0 0 12px rgba(109,40,217,0.9), 0 0 30px rgba(79,70,229,0.5);
+  bottom: 0; left: 0; right: 0;
+  height: 35%;
+  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
 }
 
-/* ── CONTEÚDO ── */
-.wrap {
+/* LINHA DIAGONAL roxa */
+.vline {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 41%;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(180deg,
+    #6d28d9 0%,
+    #4f46e5 25%,
+    #3b82f6 55%,
+    #4f46e5 80%,
+    #6d28d9 100%
+  );
+  transform: skewX(-2deg);
+  z-index: 10;
+  box-shadow: 0 0 14px rgba(109,40,217,0.9), 0 0 35px rgba(79,70,229,0.4);
+}
+
+/* CONTEÚDO ESQUERDO */
+.left {
+  position: absolute;
+  top: 0; left: 0;
+  width: 46%;
+  height: 100%;
+  padding: 52px 44px 40px;
   z-index: 20;
   display: flex;
   flex-direction: column;
-  padding: 44px 44px 36px;
-  width: 56%;
 }
 
-/* Logo topo */
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 32px;
-}
-.logo-icon {
-  width: 38px; height: 38px;
+/* Logo */
+.logo { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+.logo-box {
+  width: 44px; height: 44px;
   background: linear-gradient(135deg, #7c3aed, #3b82f6);
-  border-radius: 9px;
+  border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
 }
-.logo-icon svg { width: 20px; height: 20px; fill: white; }
-.logo-name {
-  font-size: 26px; font-weight: 800;
-  color: #fff; letter-spacing: -0.3px;
-}
-.logo-name b { color: #818cf8; font-weight: 800; }
+.logo-box svg { width: 24px; height: 24px; fill: white; }
+.logo-name { font-size: 30px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+.logo-name em { font-style: normal; color: #818cf8; }
 
 /* NOVO */
-.novo-block { margin-bottom: 16px; }
+.novo { margin-bottom: 14px; }
 .novo-big {
   font-family: 'Bebas Neue', cursive;
-  font-size: 56px;
+  font-size: 64px;
+  font-style: italic;
   letter-spacing: 5px;
   color: #a78bfa;
   line-height: 1;
-  font-style: italic;
+  text-shadow: 0 0 30px rgba(167,139,250,0.5);
 }
 .novo-sub {
-  font-size: 12px; font-weight: 700;
+  font-size: 13px; font-weight: 700;
   letter-spacing: 4px; color: #7c3aed;
   text-transform: uppercase;
+  margin-top: 2px;
 }
 
-/* divisor roxo */
+/* barra */
 .bar {
-  width: 48px; height: 3px;
+  width: 52px; height: 3px;
   background: linear-gradient(90deg, #7c3aed, #3b82f6);
   border-radius: 2px;
-  margin: 14px 0 18px;
+  margin: 16px 0 20px;
 }
 
-/* TÍTULO grande */
+/* TÍTULO GRANDE */
 .title {
   font-family: 'Bebas Neue', cursive;
-  font-size: 88px;
-  line-height: 0.9;
+  font-size: 96px;
+  line-height: 0.88;
   letter-spacing: 2px;
-  color: #fff;
+  color: #ffffff;
   text-transform: uppercase;
-  margin-bottom: 24px;
-  text-shadow: 3px 3px 0 #000, 0 0 40px rgba(124,58,237,0.3);
+  margin-bottom: 28px;
+  text-shadow: 3px 3px 0 rgba(0,0,0,0.8), 0 0 40px rgba(124,58,237,0.25);
   word-break: break-word;
   flex-shrink: 0;
 }
 
-/* Meta */
+/* meta */
 .meta {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  margin-bottom: 10px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #e2e8f0;
+  display: flex; align-items: center; gap: 0;
+  font-size: 16px; font-weight: 600; color: #e2e8f0;
+  margin-bottom: 10px; flex-wrap: wrap;
 }
-.meta-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.meta-sep { margin: 0 12px; color: #475569; }
+.meta-sep { margin: 0 12px; color: #4b5563; }
 
-/* Gêneros */
+/* gêneros */
 .genres {
   font-size: 13px; font-weight: 700;
-  letter-spacing: 2px; color: #818cf8;
+  letter-spacing: 2.5px; color: #818cf8;
   text-transform: uppercase;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
-/* Sinopse */
+/* sinopse */
 .overview {
-  font-size: 14px;
-  line-height: 1.75;
+  font-size: 15px; line-height: 1.75;
   color: #cbd5e1;
-  margin-bottom: 0;
   flex: 1;
   overflow: hidden;
 }
 
-/* Botão */
-.btn-wrap { margin-top: 28px; }
+/* botão */
+.btn-wrap { margin-top: 30px; }
 .btn {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px 28px;
-  background: linear-gradient(135deg, #7c3aed, #4f46e5, #3b82f6);
+  display: flex; align-items: center;
+  justify-content: center; gap: 16px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
   border-radius: 50px;
-  border: 2px solid rgba(167,139,250,0.5);
-  font-size: 18px; font-weight: 800;
-  letter-spacing: 2px; color: #fff;
+  border: 2px solid rgba(167,139,250,0.45);
+  font-size: 20px; font-weight: 800;
+  letter-spacing: 2.5px; color: #fff;
   text-transform: uppercase;
-  box-shadow: 0 0 30px rgba(109,40,217,0.6), 0 8px 24px rgba(0,0,0,0.5);
-  width: 100%;
-  justify-content: center;
+  box-shadow:
+    0 0 0 1px rgba(109,40,217,0.3),
+    0 0 30px rgba(109,40,217,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.1);
 }
 .btn-play {
-  width: 32px; height: 32px;
+  width: 36px; height: 36px;
   background: rgba(255,255,255,0.15);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-  padding-left: 3px;
+  font-size: 16px; padding-left: 3px;
   flex-shrink: 0;
 }
 
-/* Footer */
-.footer {
-  margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-}
+/* footer */
+.footer { margin-top: 22px; }
 .footer-label {
-  font-size: 13px; font-weight: 700;
-  letter-spacing: 2px; color: #6d28d9;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 3px; color: #6d28d9;
   text-transform: uppercase;
+  margin-bottom: 6px;
 }
-.footer-logo {
-  display: flex; align-items: center; gap: 10px;
-}
-.footer-logo-icon {
-  width: 32px; height: 32px;
+.footer-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.footer-icon {
+  width: 34px; height: 34px;
   background: linear-gradient(135deg, #7c3aed, #3b82f6);
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
 }
-.footer-logo-icon svg { width: 18px; height: 18px; fill: white; }
-.footer-logo-name {
-  font-size: 30px; font-weight: 800;
-  background: linear-gradient(135deg, #818cf8, #3b82f6);
+.footer-icon svg { width: 18px; height: 18px; fill: white; }
+.footer-name {
+  font-size: 34px; font-weight: 800;
+  background: linear-gradient(135deg, #818cf8 0%, #3b82f6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  letter-spacing: -0.5px;
 }
-.devices {
-  display: flex; align-items: center; gap: 10px; margin-top: 4px;
-}
-.dev-icons { display: flex; gap: 8px; align-items: center; }
-.dev-icon { color: #4b5563; font-size: 16px; }
+.devices { display: flex; align-items: center; gap: 10px; }
+.dev-icons { display: flex; gap: 10px; }
+.dev-icon { font-size: 18px; color: #4b5563; }
 .dev-text {
-  font-size: 10px; font-weight: 600;
+  font-size: 11px; font-weight: 600;
   letter-spacing: 2px; color: #4b5563;
   text-transform: uppercase;
 }
@@ -1045,44 +1037,38 @@ body {
 </head>
 <body>
 
-<div class="bg"></div>
-<div class="line"></div>
+<div class="img-right"></div>
+<div class="vline"></div>
 
-<div class="wrap">
-  <!-- Logo -->
+<div class="left">
+
   <div class="logo">
-    <div class="logo-icon">
+    <div class="logo-box">
       <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
     </div>
-    <div class="logo-name">Fl<b>i</b>xhub</div>
+    <div class="logo-name">Fl<em>i</em>xhub</div>
   </div>
 
-  <!-- NOVO -->
-  <div class="novo-block">
+  <div class="novo">
     <div class="novo-big">NOVO</div>
     <div class="novo-sub">${typeLabel}</div>
   </div>
 
   <div class="bar"></div>
 
-  <!-- Título -->
   <div class="title">${title}</div>
 
-  <!-- Meta -->
   <div class="meta">
-    <div class="meta-item">📅 ${year}</div>
-    ${runtime ? '<span class="meta-sep">|</span><div class="meta-item">⏱ ' + runtime + '</div>' : ''}
+    <span>📅 ${year}</span>
+    ${runtime ? '<span class="meta-sep">|</span><span>⏱ ' + runtime + '</span>' : ''}
     <span class="meta-sep">|</span>
-    <div class="meta-item">⭐ ${ratingDisplay}/10</div>
+    <span>⭐ ${ratingDisplay}/10</span>
   </div>
 
-  <!-- Gêneros -->
   <div class="genres">${genreDisplay}</div>
 
-  <!-- Sinopse -->
   <div class="overview">${overviewShort}</div>
 
-  <!-- Botão -->
   <div class="btn-wrap">
     <div class="btn">
       <div class="btn-play">▶</div>
@@ -1090,14 +1076,13 @@ body {
     </div>
   </div>
 
-  <!-- Footer -->
   <div class="footer">
     <div class="footer-label">SÓ NO</div>
-    <div class="footer-logo">
-      <div class="footer-logo-icon">
+    <div class="footer-brand">
+      <div class="footer-icon">
         <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
       </div>
-      <div class="footer-logo-name">Flixhub</div>
+      <div class="footer-name">Flixhub</div>
     </div>
     <div class="devices">
       <div class="dev-icons">
@@ -1108,8 +1093,8 @@ body {
       <div class="dev-text">Disponível em todos os dispositivos</div>
     </div>
   </div>
-</div>
 
+</div>
 </body>
 </html>`;
 }
